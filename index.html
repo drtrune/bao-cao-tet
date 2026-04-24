@@ -110,16 +110,13 @@
                         <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Đơn vị báo cáo</label>
                         <select id="khoaBaoCao" onchange="toggleSections(); onDateOrDeptChange();" class="block w-full border-slate-200 rounded-lg p-2 border font-bold text-blue-900">
                             <option value="">-- Chọn khoa --</option>
-                            <option value="PHÒNG CẤP CỨU">PHÒNG CẤP CỨU</option>
-                            <option value="KHOA KHÁM BỆNH">KHOA KHÁM BỆNH</option>
-                            <option value="NỘI TỔNG HỢP">NỘI TỔNG HỢP</option>
-                            <option value="NGOẠI TỔNG HỢP">NGOẠI TỔNG HỢP</option>
-                            <option value="PHỤ SẢN">PHỤ SẢN</option>
-                            <option value="NHI">NHI</option>
-                            <option value="LIÊN CHUYÊN KHOA">LIÊN CHUYÊN KHOA</option>
-                            <option value="HỒI SỨC CẤP CỨU">HỒI SỨC CẤP CỨU</option>
-                            <option value="GÂY MÊ HỒI SỨC">GÂY MÊ HỒI SỨC</option>
-                            <option value="XÉT NGHIỆM">XÉT NGHIỆM</option>
+                            <option value="Nội tổng hợp">Nội tổng hợp</option>
+                            <option value="Ngoại tổng hợp">Ngoại tổng hợp</option>
+                            <option value="Phụ Sản">Phụ Sản</option>
+                            <option value="Nhi">Nhi</option>
+                            <option value="Liên chuyên khoa">Liên chuyên khoa</option>
+                            <option value="Khám bệnh">Khám bệnh</option>
+                            <option value="Phòng cấp cứu">Phòng cấp cứu</option>
                         </select>
                     </div>
                     <div class="space-y-1">
@@ -168,7 +165,7 @@
                                     <th rowspan="2" class="col-num">BN cũ<br>(1)</th>
                                     <th colspan="2">Khám bệnh (2)</th>
                                     <th rowspan="2" class="col-num">Vào<br>viện<br>(3)</th>
-                                    <th colspan="2">Chuyển tuyến (4)</th>
+                                    <th colspan="2">Chuyển viện (4)</th>
                                     <th colspan="2">Ra viện (5)</th>
                                     <th colspan="2">Tử vong (6)</th>
                                     <th colspan="2" class="bg-amber-100 italic">*BN hiện có tại thời<br>điểm gửi báo cáo (7)</th>
@@ -179,11 +176,11 @@
                                     <th class="col-num">Ngoại<br>trú<br><span class="text-red-600">(4.1)</span></th>
                                     <th class="col-num">Nội<br>trú<br><span class="text-red-600">(4.2)</span></th>
                                     <th class="col-num">Tổng<br>số<br><span class="text-red-600">(5.1)</span></th>
-                                    <th class="col-num">Tiên lượng<br>TV xin về<br><span class="text-red-600">(5.2)</span></th>
-                                    <th class="col-num">TV tại<br>CSKCB<br><span class="text-red-600">(6.1)</span></th>
-                                    <th class="col-num">TV trước<br>CSKCB<br><span class="text-red-600">(6.2)</span></th>
+                                    <th class="col-num text-[9px]">Tiên lượng tử vong<br>xin về <span class="text-red-600">(5.2)</span></th>
+                                    <th class="col-num">Tử vong<br>nội viện<br><span class="text-red-600">(6.1)</span></th>
+                                    <th class="col-num">Tử vong<br>ngoại viện<br><span class="text-red-600">(6.2)</span></th>
                                     <th class="col-num bg-amber-100">Tổng số<br><span class="text-red-600">(7.1)</span></th>
-                                    <th class="col-num bg-amber-100">Ca nặng,<br>nguy kịch<br><span class="text-red-600">(7.2)</span></th>
+                                    <th class="col-num bg-amber-100 text-[9px]">Ca nặng,<br>nguy kịch<br><span class="text-red-600">(7.2)</span></th>
                                 </tr>
                             </thead>
                             <tbody id="statsTableBody" class="bg-white divide-y"></tbody>
@@ -336,7 +333,15 @@
 
     <script>
         let _fileUrlToDeleteInModal = null; // Biến tạm lưu URL file muốn xóa trong modal
-        const ROW_NAMES = ["Tai nạn giao thông*", "Tai nạn do pháo nổ*", "Tai nạn do vũ khí, vật liệu nổ tự chế*", "Ngộ độc thực phẩm (không bao gồm rối loạn tiêu hoá)", "Các đối tượng người bệnh còn lại"];
+        const ROW_NAMES = [
+            "KHÁM CHỮA BỆNH CHUNG",
+            "Tai nạn giao thông",
+            "COVID-19",
+            "Tai nạn do pháo nổ",
+            "Tai nạn do vũ khí, vật liệu nổ tự chế",
+            "Ngộ độc thực phẩm (không bao gồm rối loạn tiêu hoá)",
+            "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"
+        ];
         let patientRowIndex = 0;
 
         // ==============================================================
@@ -490,23 +495,26 @@
 
         const COL_CODES = [1, 21, 22, 3, 41, 42, 51, 52, 61, 62];
 
-        /** Tạo bảng 5 dòng thống kê + 1 dòng TỔNG CỘNG */
+        /** Tạo bảng 7 dòng thống kê */
         function initStatsTable() {
             const body = document.getElementById('statsTableBody');
+            body.innerHTML = ''; // Clear cũ nếu có
             ROW_NAMES.forEach((name, idx) => {
+                const isTotalRow = (idx === 0);
+                const bgClass = isTotalRow ? "bg-slate-100 font-black text-red-700 uppercase" : "font-bold text-blue-900";
+                const inputDisabled = isTotalRow ? "readonly tabindex='-1'" : "";
+                const inputClass = isTotalRow ? "bg-slate-100 text-red-700 font-bold" : "";
+                const bg71Class = isTotalRow ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900";
+                
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td class="sticky-col-1 border p-1 text-center font-bold text-slate-400">${idx + 1}</td><td class="sticky-col-2 border p-2 text-left font-bold text-blue-900">${name}</td>${COL_CODES.map(c => `<td class="p-0 border"><input type="number" class="table-input c${c} row-${idx}" onchange="calc71(${idx}); calcTotals()" value="0"></td>`).join('')}<td class="p-1 border bg-amber-50 font-black text-amber-900 res-71 text-[13px]">0</td><td class="p-0 border bg-amber-50"><input type="number" class="table-input c72 row-${idx}" onchange="calcTotals()" value="0"></td>`;
+                tr.innerHTML = `<td class="sticky-col-1 border p-1 text-center font-bold text-slate-400">${isTotalRow ? '-' : idx}</td><td class="sticky-col-2 border p-2 text-left ${bgClass}">${name} ${isTotalRow ? '<br><span class="text-[10px] text-slate-500 font-normal italic normal-case">(Hệ thống tự tính, không nhập)</span>' : ''}</td>${COL_CODES.map(c => `<td class="p-0 border"><input type="number" class="table-input c${c} row-${idx} ${inputClass}" onchange="${isTotalRow ? '' : `calc71(${idx}); calcTotals()`}" value="0" ${inputDisabled}></td>`).join('')}<td class="p-1 border ${bg71Class} font-black res-71 text-[13px]">0</td><td class="p-0 border ${bg71Class}"><input type="number" class="table-input c72 row-${idx} ${isTotalRow ? 'bg-red-50 text-red-800 font-bold' : ''}" onchange="${isTotalRow ? '' : `calcTotals()`}" value="0" ${inputDisabled}></td>`;
                 body.appendChild(tr);
             });
-            // Dòng TỔNG CỘNG
-            const totalTr = document.createElement('tr');
-            totalTr.className = 'total-row';
-            totalTr.innerHTML = `<td class="sticky-col-1 border p-1 text-center"></td><td class="sticky-col-2 border p-2 text-right font-black uppercase text-slate-700">TỔNG CỘNG</td>${COL_CODES.map(c => `<td class="p-1 border text-center font-black text-[13px] total-c${c}">0</td>`).join('')}<td class="p-1 border bg-amber-50 font-black text-amber-900 text-[13px] total-71">0</td><td class="p-1 border bg-amber-50 font-black text-amber-900 text-[13px] total-72">0</td>`;
-            body.appendChild(totalTr);
         }
 
         /** Tính cột 7.1 cho 1 dòng: BN cũ + Vào viện - Chuyển - Ra viện - TV */
         function calc71(r) {
+            if (r === 0) return; // Không tính cho dòng tổng KHÁM CHỮA BỆNH CHUNG theo công thức này, mà nó sẽ tự lấy tổng từ các dòng dưới
             const c1 = parseFloat(document.querySelector(`.c1.row-${r}`).value) || 0;
             const c3 = parseFloat(document.querySelector(`.c3.row-${r}`).value) || 0;
             const c42 = parseFloat(document.querySelector(`.c42.row-${r}`).value) || 0;
@@ -516,28 +524,33 @@
             document.querySelectorAll('.res-71')[r].innerText = c1 + c3 - c42 - c51 - c61 - c62;
         }
 
-        /** Tính hàng TỔNG CỘNG — cộng dồn 12 cột từ 5 đối tượng */
+        /** Tính hàng KHÁM CHỮA BỆNH CHUNG (Dòng 0) */
         function calcTotals() {
+            if (ROW_NAMES.length === 0) return;
+            
             COL_CODES.forEach(c => {
                 let sum = 0;
-                for (let r = 0; r < ROW_NAMES.length; r++) {
+                for (let r = 1; r < ROW_NAMES.length; r++) {
                     sum += parseFloat(document.querySelector(`.c${c}.row-${r}`)?.value) || 0;
                 }
-                const el = document.querySelector(`.total-c${c}`);
-                if (el) el.innerText = sum;
+                const totalInput = document.querySelector(`.c${c}.row-0`);
+                if (totalInput) totalInput.value = sum;
             });
             // Tổng 7.1
             let sum71 = 0;
-            document.querySelectorAll('.res-71').forEach(el => { sum71 += parseFloat(el.innerText) || 0; });
-            const el71 = document.querySelector('.total-71');
-            if (el71) el71.innerText = sum71;
+            const res71Nodes = document.querySelectorAll('.res-71');
+            for (let r = 1; r < ROW_NAMES.length; r++) {
+                 sum71 += parseFloat(res71Nodes[r]?.innerText) || 0;
+            }
+            if (res71Nodes[0]) res71Nodes[0].innerText = sum71;
+            
             // Tổng 7.2
             let sum72 = 0;
-            for (let r = 0; r < ROW_NAMES.length; r++) {
+            for (let r = 1; r < ROW_NAMES.length; r++) {
                 sum72 += parseFloat(document.querySelector(`.c72.row-${r}`)?.value) || 0;
             }
-            const el72 = document.querySelector('.total-72');
-            if (el72) el72.innerText = sum72;
+            const total72Input = document.querySelector(`.c72.row-0`);
+            if (total72Input) total72Input.value = sum72;
         }
 
         /** Mảng lưu trữ dữ liệu bệnh nhân trong bộ nhớ */
@@ -1211,7 +1224,7 @@
                             <th rowspan="2" class="col-num">BN cũ<br>(1)</th>
                             <th colspan="2">Khám bệnh (2)</th>
                             <th rowspan="2" class="col-num">Vào<br>viện<br>(3)</th>
-                            <th colspan="2">Chuyển tuyến (4)</th>
+                            <th colspan="2">Chuyển viện (4)</th>
                             <th colspan="2">Ra viện (5)</th>
                             <th colspan="2">Tử vong (6)</th>
                             <th colspan="2" class="bg-amber-100 italic">*BN hiện có tại thời<br>điểm gửi báo cáo (7)</th>
@@ -1222,9 +1235,9 @@
                             <th class="col-num">Ngoại<br>trú<br><span class="text-red-600">(4.1)</span></th>
                             <th class="col-num">Nội<br>trú<br><span class="text-red-600">(4.2)</span></th>
                             <th class="col-num">Tổng<br>số<br><span class="text-red-600">(5.1)</span></th>
-                            <th class="col-num">Tiên lượng<br>TV xin về<br><span class="text-red-600">(5.2)</span></th>
-                            <th class="col-num">TV tại<br>CSKCB<br><span class="text-red-600">(6.1)</span></th>
-                            <th class="col-num">TV trước<br>CSKCB<br><span class="text-red-600">(6.2)</span></th>
+                            <th class="col-num">Tiên lượng tử vong<br>xin về<br><span class="text-red-600">(5.2)</span></th>
+                            <th class="col-num">Tử vong<br>nội viện<br><span class="text-red-600">(6.1)</span></th>
+                            <th class="col-num">Tử vong<br>ngoại viện<br><span class="text-red-600">(6.2)</span></th>
                             <th class="col-num bg-amber-100">Tổng số<br><span class="text-red-600">(7.1)</span></th>
                             <th class="col-num bg-amber-100">Ca nặng,<br>nguy kịch<br><span class="text-red-600">(7.2)</span></th>
                         </tr>

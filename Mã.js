@@ -303,11 +303,13 @@ function getExistingReport(khoa, ngay) {
         // Tạo khung dữ liệu rỗng cho ngày hôm nay nhưng điền sẵn cột 1 từ hôm qua
         // Danh sách đối tượng mặc định chuẩn (Khớp với ROW_NAMES ở frontend index.html)
         const defaultDoiTuong = [
-            "Tai nạn giao thông*", 
-            "Tai nạn do pháo nổ*", 
-            "Tai nạn do vũ khí, vật liệu nổ tự chế*", 
+            "KHÁM CHỮA BỆNH CHUNG",
+            "Tai nạn giao thông", 
+            "COVID-19",
+            "Tai nạn do pháo nổ", 
+            "Tai nạn do vũ khí, vật liệu nổ tự chế", 
             "Ngộ độc thực phẩm (không bao gồm rối loạn tiêu hoá)", 
-            "Các đối tượng người bệnh còn lại"
+            "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"
         ];
         
         // Cần đảm bảo thứ tự đúng như bảng nhập liệu
@@ -432,11 +434,13 @@ function getAggregatedReportRange(startDate, endDate) {
     });
 
     const ROW_NAMES = [
-      "Tai nạn giao thông*",
-      "Tai nạn do pháo nổ*",
-      "Tai nạn do vũ khí, vật liệu nổ tự chế*",
+      "KHÁM CHỮA BỆNH CHUNG",
+      "Tai nạn giao thông",
+      "COVID-19",
+      "Tai nạn do pháo nổ",
+      "Tai nạn do vũ khí, vật liệu nổ tự chế",
       "Ngộ độc thực phẩm (không bao gồm rối loạn tiêu hoá)",
-      "Các đối tượng người bệnh còn lại",
+      "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"
     ];
     let report = {
       thongKe: ROW_NAMES.map((name) => ({
@@ -635,10 +639,9 @@ function getReportStatus(startDate, endDate) {
 
     // Danh sách TẤT CẢ các khoa cần theo dõi
     const ALL_DEPARTMENTS = [
-      "PHÒNG CẤP CỨU", "KHOA KHÁM BỆNH",
-      "NỘI TỔNG HỢP", "NGOẠI TỔNG HỢP",
-      "PHỤ SẢN", "NHI", "LIÊN CHUYÊN KHOA",
-      "HỒI SỨC CẤP CỨU", "GÂY MÊ HỒI SỨC", "XÉT NGHIỆM"
+      "Nội tổng hợp", "Ngoại tổng hợp",
+      "Phụ Sản", "Nhi", "Liên chuyên khoa",
+      "Khám bệnh", "Phòng cấp cứu"
     ];
 
     // Tạo danh sách ngày trong dải
@@ -698,15 +701,15 @@ function refreshPhysicalSummarySheetRange(startDate, endDate) {
 
   const header1 = [
     "TT", "Khám, cấp cứu", "BN cũ (1)", "Khám bệnh (2)", "",
-    "Vào viện (3)", "Chuyển tuyến (4)", "",
+    "Vào viện (3)", "Chuyển viện (4)", "",
     "Ra viện (5)", "", "Tử vong (6)", "",
     "*BN hiện có tại thời điểm gửi báo cáo (7)", "",
   ];
   const header2 = [
     "", "", "(1)", "Tổng số (2.1)", "Khám BHYT (2.2)",
     "(3)", "Ngoại trú (4.1)", "Nội trú (4.2)",
-    "Tổng số (5.1)", "Tiên lượng TV xin về (5.2)",
-    "TV tại CSKCB (6.1)", "TV trước CSKCB (6.2)",
+    "Tổng số (5.1)", "Tiên lượng tử vong xin về (5.2)",
+    "Tử vong nội viện (6.1)", "Tử vong ngoại viện (6.2)",
     "Tổng số (7.1)", "Ca nặng, hoặc nguy kịch (7.2)",
   ];
 
