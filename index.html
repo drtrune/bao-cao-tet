@@ -438,9 +438,9 @@
                 // Cột 7.2 (Hiện có) là cột cuối cùng trong inputs (index = length của COL_CODES)
                 const idx72 = COL_CODES.length;
 
-                if (khoa === "KHOA KHÁM BỆNH") {
-                    // KHOA KHÁM BỆNH:
-                    // Chỉ nhập: Khám bệnh (c21, c22), Chuyển tuyến Ngoại trú (c41)
+                if (khoa === "KHÁM BỆNH") {
+                    // KHÁM BỆNH:
+                    // Chỉ nhập: Khám bệnh (c21, c22), Chuyển viện Ngoại trú (c41)
                     // Disable: BN cũ (c1), Vào viện (c3), Chuyển nội trú (c42), Ra viện (c51, c52), TV (c61, c62), Hiện có (c72)
                     const disableCodes = [1, 3, 42, 51, 52, 61, 62];
                     disableCodes.forEach(c => {
