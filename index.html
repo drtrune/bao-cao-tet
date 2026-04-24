@@ -420,6 +420,7 @@
         }
 
         function updateInputState(khoa) {
+            khoa = (khoa || '').toUpperCase();
             // Helper để lấy index của cột trong bảng dựa vào mã cột (c1, c21...)
             // COL_CODES = [1, 21, 22, 3, 41, 42, 51, 52, 61, 62]
             const getIdx = (code) => COL_CODES.indexOf(code);
