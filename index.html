@@ -376,10 +376,10 @@
         }
 
         function toggleSections() {
-            const khoa = document.getElementById('khoaBaoCao').value;
+            const khoa = document.getElementById('khoaBaoCao').value.toUpperCase();
             
             // Nhóm các khoa lâm sàng (có bảng thống kê nội trú + danh sách BN)
-            const NHOM_LAM_SANG = ["NỘI TỔNG HỢP", "NGOẠI TỔNG HỢP", "NHI", "LIÊN CHUYÊN KHOA", "HỒI SỨC CẤP CỨU", "PHÒNG CẤP CỨU", "KHOA KHÁM BỆNH"];
+            const NHOM_LAM_SANG = ["NỘI TỔNG HỢP", "NGOẠI TỔNG HỢP", "NHI", "LIÊN CHUYÊN KHOA", "HỒI SỨC CẤP CỨU", "PHÒNG CẤP CỨU", "KHÁM BỆNH"];
             
             // Ẩn tất cả các section trước
             const allSections = [
