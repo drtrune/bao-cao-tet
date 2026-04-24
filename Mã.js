@@ -408,8 +408,28 @@ function getAggregatedReportRange(startDate, endDate) {
     const sheet = ss.getSheetByName("Data_ThongKe");
     if (!sheet) return { khoaDaNop: [], thongKe: [], chiSo: {} };
 
-    const data = sheet.getDataRange().getValues();
+    let data = sheet.getDataRange().getValues();
     data.shift(); // Loại bỏ header
+
+    // --- BẢO ĐẢM CHỈ LẤY DỮ LIỆU MỚI NHẤT CỦA MỖI (KHOA, NGÀY) ---
+    let latestTsTK = {};
+    data.forEach((row) => {
+      const rowDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
+      const khoa = row[2];
+      const ts = new Date(row[0]).getTime();
+      const key = khoa + "_" + rowDate;
+      if (!latestTsTK[key] || ts > latestTsTK[key]) latestTsTK[key] = ts;
+    });
+
+    data = data.filter((row) => {
+      const trangThai = row[22];
+      if (trangThai === "Lịch sử") return false;
+      const rowDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
+      const khoa = row[2];
+      const ts = new Date(row[0]).getTime();
+      const key = khoa + "_" + rowDate;
+      return ts === latestTsTK[key];
+    });
 
     const ROW_NAMES = [
       "Tai nạn giao thông*",
@@ -502,15 +522,30 @@ function getAggregatedReportRange(startDate, endDate) {
     report.benhNhan = [];
 
     if (sheetBN && sheetBN.getLastRow() > 1) {
-      const dataBN = sheetBN.getDataRange().getValues();
+      let dataBN = sheetBN.getDataRange().getValues();
+      dataBN.shift(); // Bỏ header
+
+      let latestTsBN = {};
+      dataBN.forEach((row) => {
+        const bnDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
+        const khoa = row[2];
+        const ts = new Date(row[0]).getTime();
+        const key = khoa + "_" + bnDate;
+        if (!latestTsBN[key] || ts > latestTsBN[key]) latestTsBN[key] = ts;
+      });
+
       const formatDT = (val) => {
         if (!val) return '';
         try { return Utilities.formatDate(new Date(val), 'GMT+7', "yyyy-MM-dd HH:mm"); }
         catch (e) { return String(val); }
       };
-      dataBN.slice(1).forEach(row => {
+      dataBN.forEach(row => {
         const bnDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
-        if (bnDate >= startDate && bnDate <= endDate) {
+        const khoa = row[2];
+        const ts = new Date(row[0]).getTime();
+        const key = khoa + "_" + bnDate;
+
+        if (ts === latestTsBN[key] && bnDate >= startDate && bnDate <= endDate) {
           report.benhNhan.push({
             ngay: bnDate,
             khoa: row[2],
