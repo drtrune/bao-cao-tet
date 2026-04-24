@@ -24,6 +24,81 @@ function doGet(e) {
 }
 
 // ======================================================================
+// PHẦN CẤU HÌNH (CONFIG)
+// ======================================================================
+
+function getConfig() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("Config");
+
+  // Các giá trị mặc định nếu chưa có
+  const defaultDepartments = [
+    "KHOA CẤP CỨU", "KHOA HỒI SỨC TÍCH CỰC - CHỐNG ĐỘC", "KHOA KHÁM BỆNH",
+    "KHOA NGOẠI TỔNG HỢP", "KHOA NGOẠI CHẤN THƯƠNG - CHỈNH HÌNH - BỎNG", "KHOA NGOẠI THẦN KINH - CỘT SỐNG",
+    "KHOA NỘI TỔNG HỢP", "KHOA NỘI TIM MẠCH", "KHOA NHI", "KHOA PHỤ SẢN",
+    "KHOA TAI MŨI HỌNG", "KHOA RĂNG HÀM MẶT", "KHOA MẮT", "KHOA Y HỌC CỔ TRUYỀN", "PHÒNG KHÁM DA LIỄU",
+    "KHOA PHỤC HỒI CHỨC NĂNG", "KHOA TRUYỀN NHIỄM", "KHOA ĐIỀU TRỊ THEO YÊU CẦU", "KHOA UNG BƯỚU", "KHOA LÃO KHOA",
+    "KHOA ĐỘT QUỴ", "ĐƠN VỊ THẬN NHÂN TẠO", "PHÒNG ĐẺ", "PHÒNG MỔ"
+  ];
+
+  const defaultRowNames = [
+    "KHÁM CHỮA BỆNH CHUNG", // Bắt buộc phải là phần tử đầu tiên
+    "Tai nạn giao thông",
+    "COVID-19",
+    "Tai nạn do pháo nổ",
+    "Tai nạn do vũ khí, vật liệu nổ tự chế",
+    "Ngộ độc thực phẩm (không bao gồm rối loạn tiêu hoá)",
+    "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"
+  ];
+
+  if (!sheet) {
+    sheet = ss.insertSheet("Config");
+    sheet.appendRow(["Bệnh viện / Cơ sở y tế", "Nhóm đối tượng báo cáo", "Danh sách Khoa báo cáo"]);
+    
+    // Ghi các giá trị mặc định vào sheet
+    const maxRows = Math.max(1, defaultRowNames.length, defaultDepartments.length);
+    for (let i = 0; i < maxRows; i++) {
+      const colA = i === 0 ? "Bệnh viện Đa khoa Tỉnh" : "";
+      const colB = i < defaultRowNames.length ? defaultRowNames[i] : "";
+      const colC = i < defaultDepartments.length ? defaultDepartments[i] : "";
+      sheet.appendRow([colA, colB, colC]);
+    }
+    
+    // Định dạng header
+    sheet.getRange("A1:C1").setFontWeight("bold").setBackground("#d9ead3");
+    sheet.setColumnWidth(1, 200);
+    sheet.setColumnWidth(2, 300);
+    sheet.setColumnWidth(3, 300);
+  }
+
+  const data = sheet.getDataRange().getValues();
+  data.shift(); // Bỏ header
+
+  let rowNames = [];
+  let departments = [];
+
+  data.forEach(row => {
+    if (row[1]) rowNames.push(String(row[1]).trim());
+    if (row[2]) departments.push(String(row[2]).trim());
+  });
+
+  // Đảm bảo dòng đầu tiên luôn là KHÁM CHỮA BỆNH CHUNG (nếu bị sửa sai hoặc xoá)
+  if (rowNames.length === 0 || rowNames[0].toUpperCase() !== "KHÁM CHỮA BỆNH CHUNG") {
+    // Nếu trong mảng đã có thì đẩy lên đầu
+    const existingIndex = rowNames.findIndex(name => name.toUpperCase() === "KHÁM CHỮA BỆNH CHUNG");
+    if (existingIndex > -1) {
+      rowNames.splice(existingIndex, 1);
+    }
+    rowNames.unshift("KHÁM CHỮA BỆNH CHUNG");
+  }
+
+  return {
+    rowNames: rowNames,
+    departments: departments
+  };
+}
+
+// ======================================================================
 // PHẦN 1: LƯU TRỮ DỮ LIỆU
 // ======================================================================
 
@@ -301,17 +376,9 @@ function getExistingReport(khoa, ngay) {
         }
 
         // Tạo khung dữ liệu rỗng cho ngày hôm nay nhưng điền sẵn cột 1 từ hôm qua
-        // Danh sách đối tượng mặc định chuẩn (Khớp với ROW_NAMES ở frontend index.html)
-        const defaultDoiTuong = [
-            "Tai nạn giao thông*", 
-            "Tai nạn do pháo nổ*", 
-            "Tai nạn do vũ khí, vật liệu nổ tự chế*", 
-            "Ngộ độc thực phẩm (không bao gồm rối loạn tiêu hoá)", 
-            "Các đối tượng người bệnh còn lại"
-        ];
-        
-        // Cần đảm bảo thứ tự đúng như bảng nhập liệu
-        // Ở frontend danh sách dòng là cố định, backend trả về list object
+        const defaultDoiTuong = getConfig().rowNames;
+
+        // Cần đảm bảo thứ tự đúng như bảng nhập liệu        // Ở frontend danh sách dòng là cố định, backend trả về list object
         // Ta tạo list object với c1 lấy từ prevDataMap
         if (Object.keys(prevDataMap).length > 0) {
              result.failButFoundPrev = true; // Cờ báo hiệu: tìm thấy data cũ
@@ -431,13 +498,7 @@ function getAggregatedReportRange(startDate, endDate) {
       return ts === latestTsTK[key];
     });
 
-    const ROW_NAMES = [
-      "Tai nạn giao thông*",
-      "Tai nạn do pháo nổ*",
-      "Tai nạn do vũ khí, vật liệu nổ tự chế*",
-      "Ngộ độc thực phẩm (không bao gồm rối loạn tiêu hoá)",
-      "Các đối tượng người bệnh còn lại",
-    ];
+    const ROW_NAMES = getConfig().rowNames;
     let report = {
       thongKe: ROW_NAMES.map((name) => ({
         doiTuong: name,
@@ -633,13 +694,8 @@ function getReportStatus(startDate, endDate) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName("Data_ThongKe");
 
-    // Danh sách TẤT CẢ các khoa cần theo dõi
-    const ALL_DEPARTMENTS = [
-      "PHÒNG CẤP CỨU", "KHOA KHÁM BỆNH",
-      "NỘI TỔNG HỢP", "NGOẠI TỔNG HỢP",
-      "PHỤ SẢN", "NHI", "LIÊN CHUYÊN KHOA",
-      "HỒI SỨC CẤP CỨU", "GÂY MÊ HỒI SỨC", "XÉT NGHIỆM"
-    ];
+    // Lấy danh sách TẤT CẢ các khoa cần theo dõi từ Cấu hình
+    const ALL_DEPARTMENTS = getConfig().departments;
 
     // Tạo danh sách ngày trong dải
     let dates = [];
@@ -698,15 +754,15 @@ function refreshPhysicalSummarySheetRange(startDate, endDate) {
 
   const header1 = [
     "TT", "Khám, cấp cứu", "BN cũ (1)", "Khám bệnh (2)", "",
-    "Vào viện (3)", "Chuyển tuyến (4)", "",
+    "Vào viện (3)", "Chuyển viện (4)", "",
     "Ra viện (5)", "", "Tử vong (6)", "",
     "*BN hiện có tại thời điểm gửi báo cáo (7)", "",
   ];
   const header2 = [
     "", "", "(1)", "Tổng số (2.1)", "Khám BHYT (2.2)",
     "(3)", "Ngoại trú (4.1)", "Nội trú (4.2)",
-    "Tổng số (5.1)", "Tiên lượng TV xin về (5.2)",
-    "TV tại CSKCB (6.1)", "TV trước CSKCB (6.2)",
+    "Tổng số (5.1)", "Tiên lượng tử vong xin về (5.2)",
+    "Tử vong nội viện (6.1)", "Tử vong ngoại viện (6.2)",
     "Tổng số (7.1)", "Ca nặng, hoặc nguy kịch (7.2)",
   ];
 
@@ -848,6 +904,9 @@ function doPost(e) {
       var result = null;
 
       switch (action) {
+        case 'getConfig':
+          result = getConfig();
+          break;
         case 'saveReport':
           result = saveReport(payload);
           break;
