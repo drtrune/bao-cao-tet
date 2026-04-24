@@ -792,59 +792,81 @@ function checkDrivePermissions() {
 // ======================================================================
 
 /**
- * Xử lý POST request (Upload file)
+ * Xử lý POST request (API Router)
  */
 function doPost(e) {
   try {
     // Phân tích dữ liệu JSON từ body request
-    // Frontend KHÔNG được gửi header Content-Type: application/json để tránh lỗi CORS Preflight
-    var data = JSON.parse(e.postData.contents);
-    var filename = data.filename;
-    var mimetype = data.mimetype;
-    var base64Data = data.data;
-    
-    // 1. Quản lý thư mục (Tạo nếu chưa có)
-    // 1. Quản lý thư mục (Tạo nếu chưa có)
-    var folderName = "Báo cáo tết"; // BVBD_PROTOCOL_STORAGE
-    var folder;
-    try {
-      var folders = DriveApp.getFoldersByName(folderName);
-      folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
-    } catch (e) {
-      // Fallback: Lưu vào Root Drive nếu lỗi quyền truy cập folder cụ thể
-      folder = DriveApp.getRootFolder();
-    }
-    
-    // 2. Tạo file trong thư mục đã chọn
-    var decoded = Utilities.base64Decode(base64Data);
-    var blob = Utilities.newBlob(decoded, mimetype, filename);
-    
-    var file;
-    try {
-      file = folder.createFile(blob);
-    } catch (e1) {
-      // LAST RETRY: Tạo trực tiếp ở Root Drive bằng hàm rút gọn
-      // Giúp tránh lỗi liên quan đến Folder permission phức tạp
+    var requestData = JSON.parse(e.postData.contents);
+    var action = requestData.action;
+
+    // --- LUỒNG 1: XỬ LÝ UPLOAD FILE ---
+    if (action === 'uploadFile' || requestData.filename) {
+      var filename = requestData.filename || requestData.payload.filename;
+      var mimetype = requestData.mimetype || requestData.payload.mimetype;
+      var base64Data = requestData.data || requestData.payload.data;
+      
+      var folderName = "Báo cáo tết";
+      var folder;
       try {
-        file = DriveApp.createFile(blob);
-      } catch (e2) {
-        throw "LỖI QUYỀN NGHIÊM TRỌNG: " + e2.toString();
+        var folders = DriveApp.getFoldersByName(folderName);
+        folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+      } catch (err) {
+        folder = DriveApp.getRootFolder();
       }
+      
+      var decoded = Utilities.base64Decode(base64Data);
+      var blob = Utilities.newBlob(decoded, mimetype, filename);
+      
+      var file;
+      try {
+        file = folder.createFile(blob);
+      } catch (e1) {
+        try {
+          file = DriveApp.createFile(blob);
+        } catch (e2) {
+          throw "LỖI QUYỀN NGHIÊM TRỌNG: " + e2.toString();
+        }
+      }
+      
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        fileId: file.getId(),
+        url: file.getUrl()
+      })).setMimeType(ContentService.MimeType.JSON);
     }
-    
-    // Cấp quyền xem cho bất kỳ ai có link (để server hiển thị)
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    
-    // 3. Trả về thông tin file
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "success",
-      fileId: file.getId(),
-      url: file.getUrl(),
-      storage: { // Optional info
-        used: DriveApp.getStorageUsed(),
-        limit: DriveApp.getStorageLimit()
+
+    // --- LUỒNG 2: XỬ LÝ CÁC API CALL TỪ FRONTEND ---
+    if (action) {
+      var payload = requestData.payload;
+      var result = null;
+
+      switch (action) {
+        case 'saveReport':
+          result = saveReport(payload);
+          break;
+        case 'getExistingReport':
+          result = getExistingReport(payload.khoa, payload.ngay);
+          break;
+        case 'getAggregatedReportRange':
+          result = getAggregatedReportRange(payload.startDate, payload.endDate);
+          break;
+        case 'getReportStatus':
+          result = getReportStatus(payload.startDate, payload.endDate);
+          break;
+        default:
+          throw new Error('Action không hợp lệ: ' + action);
       }
-    })).setMimeType(ContentService.MimeType.JSON);
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        data: result
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    throw new Error('Thiếu action trong payload');
     
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({

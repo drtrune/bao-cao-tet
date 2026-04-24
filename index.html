@@ -7,8 +7,32 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <script>
-        console.log("=== PHIÊN BẢN DOPOST UPLOAD - 2026-02-11 ===");
-        const SCRIPT_URL = "<?= scriptUrl ?>"; // URL của Web App lấy từ backend
+        console.log("=== PHIÊN BẢN GITHUB PAGES API ROUTER - 2026-04-24 ===");
+        // Dán URL của Google Apps Script Web App (chạy dưới quyền của bạn, truy cập bởi anyone) vào đây
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_THAY_THE_BANG_ID_WEB_APP_CUA_BAN/exec"; 
+
+        /** Hàm gọi API chung đến Backend (Google Apps Script) */
+        async function callBackend(action, payload = {}) {
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    // Gửi plain/text để không kích hoạt CORS Preflight (OPTIONS request) từ trình duyệt
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                    body: JSON.stringify({ action: action, payload: payload })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    return result.data;
+                } else {
+                    throw new Error(result.message || 'Lỗi xử lý từ máy chủ');
+                }
+            } catch (err) {
+                console.error("Lỗi khi gọi API: ", err);
+                throw err;
+            }
+        }
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -911,7 +935,7 @@
         }
 
         /** Gọi backend để lấy dữ liệu đã gửi trước đó */
-        function loadExistingReport(khoa, ngay) {
+        async function loadExistingReport(khoa, ngay) {
             const banner = document.getElementById('loadStatusBanner');
             banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-blue-50 text-blue-700';
             banner.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Đang kiểm tra dữ liệu đã gửi...';
@@ -924,33 +948,31 @@
                 setTimeout(() => { banner.className = 'hidden'; }, 3000);
             }, 10000);
 
-            google.script.run
-                .withSuccessHandler(data => {
-                    clearTimeout(loadTimeout);
-                    if (data && (data.found || data.failButFoundPrev)) {
-                        fillFormWithData(data);
-                        if (data.found) {
-                             banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-amber-50 border border-amber-300 text-amber-800';
-                             banner.innerHTML = '📝 Đang sửa báo cáo đã gửi trước đó. Nhấn "Gửi" để cập nhật.';
-                        } else {
-                             // Trường hợp failButFoundPrev: Tạo mới nhưng có số liệu cũ từ hôm qua
-                             banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-purple-50 border border-purple-300 text-purple-700';
-                             banner.innerHTML = '🆗 Đã tìm thấy số liệu "Hiện có" từ ngày hôm qua để điền vào "BN cũ" hôm nay.';
-                             setTimeout(() => { banner.classList.add('hidden'); }, 8000);
-                        }
+            try {
+                const data = await callBackend('getExistingReport', { khoa: khoa, ngay: ngay });
+                clearTimeout(loadTimeout);
+                if (data && (data.found || data.failButFoundPrev)) {
+                    fillFormWithData(data);
+                    if (data.found) {
+                         banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-amber-50 border border-amber-300 text-amber-800';
+                         banner.innerHTML = '📝 Đang sửa báo cáo đã gửi trước đó. Nhấn "Gửi" để cập nhật.';
                     } else {
-                        // Không có gì cả (cả hôm nay lẫn hôm qua)
-                        resetForm();
-                        banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-green-50 border border-green-300 text-green-700';
-                        banner.innerHTML = '🆕 Tạo báo cáo mới (Chưa có dữ liệu cũ).';
-                        setTimeout(() => { banner.className = 'hidden'; }, 3000);
+                         // Trường hợp failButFoundPrev: Tạo mới nhưng có số liệu cũ từ hôm qua
+                         banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-purple-50 border border-purple-300 text-purple-700';
+                         banner.innerHTML = '🆗 Đã tìm thấy số liệu "Hiện có" từ ngày hôm qua để điền vào "BN cũ" hôm nay.';
+                         setTimeout(() => { banner.classList.add('hidden'); }, 8000);
                     }
-                })
-                .withFailureHandler(() => {
-                    clearTimeout(loadTimeout);
-                    banner.className = 'hidden';
-                })
-                .getExistingReport(khoa, ngay);
+                } else {
+                    // Không có gì cả (cả hôm nay lẫn hôm qua)
+                    resetForm();
+                    banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-green-50 border border-green-300 text-green-700';
+                    banner.innerHTML = '🆕 Tạo báo cáo mới (Chưa có dữ liệu cũ).';
+                    setTimeout(() => { banner.className = 'hidden'; }, 3000);
+                }
+            } catch (error) {
+                clearTimeout(loadTimeout);
+                banner.className = 'hidden';
+            }
         }
 
         /** Điền dữ liệu cũ vào form thống kê + bệnh nhân */
@@ -1085,14 +1107,15 @@
         // ==============================================================
 
         /** Lấy trạng thái báo cáo và hiển thị bảng ma trận */
-        function fetchTrackingStatus() {
+        async function fetchTrackingStatus() {
             const start = document.getElementById('trackingStart').value;
             const end = document.getElementById('trackingEnd').value;
             const container = document.getElementById('trackingContent');
             if (!start || !end) return;
             container.innerHTML = '<div class="text-center py-10 text-emerald-600"><i class="fas fa-spinner fa-spin fa-2x mb-4"></i><p>Đang kiểm tra...</p></div>';
 
-            google.script.run.withSuccessHandler(data => {
+            try {
+                const data = await callBackend('getReportStatus', { startDate: start, endDate: end });
                 if (!data || data.error) {
                     container.innerHTML = '<div class="text-center py-10 text-red-500">Lỗi: ' + (data?.error || 'Không xác định') + '</div>';
                     return;
@@ -1102,9 +1125,9 @@
                     return;
                 }
                 renderTrackingTable(data);
-            }).withFailureHandler(err => {
+            } catch (err) {
                 container.innerHTML = '<div class="text-center py-10 text-red-500">Lỗi: ' + err.message + '</div>';
-            }).getReportStatus(start, end);
+            }
         }
 
         /** Vẽ bảng ma trận theo dõi khoa × ngày */
@@ -1153,14 +1176,16 @@
 
         /* reindexPatientRows không còn cần thiết - dùng renderPatientTable() */
 
-        function fetchTotalReport() {
+        async function fetchTotalReport() {
             const start = document.getElementById('dateStartReport').value;
             const end = document.getElementById('dateEndReport').value;
             const container = document.getElementById('reportContent');
             if (!start || !end) return;
             container.innerHTML = '<div class="text-center py-20 text-blue-600"><i class="fas fa-spinner fa-spin fa-2x mb-4"></i><p>Đang tổng hợp số liệu toàn viện...</p></div>';
             
-            google.script.run.withSuccessHandler(data => {
+            try {
+                const data = await callBackend('getAggregatedReportRange', { startDate: start, endDate: end });
+                
                 if (data === null || typeof data === 'undefined') {
                     container.innerHTML = '<div class="text-center py-20 text-red-500 font-bold">Lỗi không xác định: Dữ liệu trả về rỗng.</div>';
                     return;
@@ -1289,16 +1314,9 @@
                 }
 
                 container.innerHTML = mainTableHtml + indicatorsHtml + patientHtml;
-            }).getAggregatedReportRange(start, end);
-        }
-
-        function runGoogleScript(funcName, ...args) {
-            return new Promise((resolve, reject) => {
-                google.script.run
-                    .withSuccessHandler(resolve)
-                    .withFailureHandler(reject)
-                    [funcName](...args);
-            });
+            } catch (err) {
+                container.innerHTML = `<div class="text-center py-20 text-red-500 font-bold">Lỗi kết nối máy chủ: ${err.message}</div>`;
+            }
         }
 
         async function uploadFileViaPost(fileData) {
@@ -1307,7 +1325,9 @@
             try {
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({
+                        action: 'uploadFile',
                         filename: fileData.name,
                         mimetype: fileData.mimeType,
                         data: fileData.data
@@ -1413,22 +1433,21 @@
                     fileHSBAUrl: bn.fileHSBAUrl // Thêm trường URL file đã upload
                 }))
             };
-            google.script.run
-                .withFailureHandler(error => {
-                    btn.disabled = false;
-                    btn.innerHTML = 'GỬi BáO CÁO TRỰC <i class="fas fa-paper-plane ml-2"></i>';
-                    document.getElementById('statusMsg').innerHTML = `<span class="text-red-600">❌ Lỗi: ${error.message}</span>`;
-                })
-                .withSuccessHandler(() => { 
-                    btn.innerText = "GỬi THÀNH CÔNG!"; 
-                    btn.classList.replace('bg-blue-700', 'bg-green-600');
-                    document.getElementById('statusMsg').innerHTML = '<span class="text-green-600">✅ Số liệu đã lưu vào hệ thống.</span>';
-                    setTimeout(() => { 
-                        btn.disabled = false; 
-                        btn.innerHTML = 'GỬi BáO CÁO TRỰC <i class="fas fa-paper-plane ml-2"></i>'; 
-                        btn.classList.replace('bg-green-600', 'bg-blue-700'); 
-                    }, 4000);
-                }).saveReport(payload);
+            try {
+                await callBackend('saveReport', payload);
+                btn.innerText = "GỬi THÀNH CÔNG!"; 
+                btn.classList.replace('bg-blue-700', 'bg-green-600');
+                document.getElementById('statusMsg').innerHTML = '<span class="text-green-600">✅ Số liệu đã lưu vào hệ thống.</span>';
+                setTimeout(() => { 
+                    btn.disabled = false; 
+                    btn.innerHTML = 'GỬi BáO CÁO TRỰC <i class="fas fa-paper-plane ml-2"></i>'; 
+                    btn.classList.replace('bg-green-600', 'bg-blue-700'); 
+                }, 4000);
+            } catch (error) {
+                btn.disabled = false;
+                btn.innerHTML = 'GỬi BáO CÁO TRỰC <i class="fas fa-paper-plane ml-2"></i>';
+                document.getElementById('statusMsg').innerHTML = `<span class="text-red-600">❌ Lỗi: ${error.message}</span>`;
+            }
         }
 
 
