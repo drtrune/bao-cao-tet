@@ -802,10 +802,14 @@ function doPost(e) {
 
     // --- LUỒNG 1: XỬ LÝ UPLOAD FILE ---
     if (action === 'uploadFile' || requestData.filename) {
-      var filename = requestData.filename || requestData.payload.filename;
-      var mimetype = requestData.mimetype || requestData.payload.mimetype;
-      var base64Data = requestData.data || requestData.payload.data;
+      var filename = requestData.filename || (requestData.payload && requestData.payload.filename) || "file_upload";
+      var mimetype = requestData.mimetype || (requestData.payload && requestData.payload.mimetype) || "application/octet-stream";
+      var base64Data = requestData.data || (requestData.payload && requestData.payload.data) || "";
       
+      if (!base64Data) {
+         throw new Error("Không tìm thấy dữ liệu file (base64) để upload.");
+      }
+
       var folderName = "Báo cáo tết";
       var folder;
       try {
