@@ -304,14 +304,10 @@ function getExistingReport(khoa, ngay) {
         // Danh sách đối tượng mặc định chuẩn (Khớp với ROW_NAMES ở frontend index.html)
         const defaultDoiTuong = [
             "KHÁM CHỮA BỆNH CHUNG",
-            "Tai nạn giao thông", 
+            "Tai nạn giao thông",
             "COVID-19",
-            "Tai nạn do pháo nổ", 
-            "Tai nạn do vũ khí, vật liệu nổ tự chế", 
-            "Ngộ độc thực phẩm (không bao gồm rối loạn tiêu hoá)", 
             "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"
-        ];
-        
+        ];        
         // Cần đảm bảo thứ tự đúng như bảng nhập liệu
         // Ở frontend danh sách dòng là cố định, backend trả về list object
         // Ta tạo list object với c1 lấy từ prevDataMap
@@ -437,9 +433,6 @@ function getAggregatedReportRange(startDate, endDate) {
       "KHÁM CHỮA BỆNH CHUNG",
       "Tai nạn giao thông",
       "COVID-19",
-      "Tai nạn do pháo nổ",
-      "Tai nạn do vũ khí, vật liệu nổ tự chế",
-      "Ngộ độc thực phẩm (không bao gồm rối loạn tiêu hoá)",
       "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"
     ];
     let report = {
@@ -641,7 +634,7 @@ function getReportStatus(startDate, endDate) {
     const ALL_DEPARTMENTS = [
       "Nội tổng hợp", "Ngoại tổng hợp",
       "Phụ Sản", "Nhi", "Liên chuyên khoa",
-      "Khám bệnh", "Phòng cấp cứu"
+      "Khám bệnh", "Phòng cấp cứu", "Hồi sức Cấp cứu"
     ];
 
     // Tạo danh sách ngày trong dải
@@ -731,25 +724,33 @@ function refreshPhysicalSummarySheetRange(startDate, endDate) {
   merges.forEach((m) => sheetSummary.getRange(m[0], m[1], m[2], m[3]).merge());
 
   let rows = [];
-  let totals = Array(12).fill(0);
-  data.thongKe.forEach((item, i) => {
-    let r = [i + 1, item.doiTuong];
-    item.vals.forEach((v, idx) => {
-      r.push(v);
-      totals[idx] += v;
-    });
+  // data.thongKe[0] chính là hàng KHÁM CHỮA BỆNH CHUNG (tổng cộng)
+  const totalItem = data.thongKe[0];
+  
+  // Chỉ lặp qua các hàng chi tiết (bỏ qua hàng đầu tiên)
+  for (let i = 1; i < data.thongKe.length; i++) {
+    const item = data.thongKe[i];
+    let r = [i, item.doiTuong];
+    item.vals.forEach((v) => r.push(v));
     rows.push(r);
-  });
-  rows.push(["", "TỔNG CỘNG", ...totals]);
+  }
+
+  // Thêm hàng TỔNG CỘNG ở cuối cùng lấy từ data.thongKe[0]
+  if (totalItem) {
+    rows.push(["Σ", "TỔNG CỘNG (KHÁM CHỮA BỆNH CHUNG)", ...totalItem.vals]);
+  }
 
   sheetSummary
     .getRange(3, 1, rows.length, 14)
     .setValues(rows)
     .setBorder(true, true, true, true, true, true);
+  
+  // Định dạng hàng tổng cộng cuối cùng
   sheetSummary
     .getRange(3 + rows.length - 1, 1, 1, 14)
     .setFontWeight("bold")
-    .setBackground("#f3f3f3");
+    .setBackground("#d9ead3") // Màu xanh lá nhạt phân biệt hàng tổng
+    .setFontColor("#274e13");
 
   const startRow = 3 + rows.length + 2;
   const subData = [

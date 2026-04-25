@@ -504,9 +504,10 @@
                 const inputDisabled = isTotalRow ? "readonly tabindex='-1'" : "";
                 const inputClass = isTotalRow ? "bg-slate-100 text-red-700 font-bold" : "";
                 const bg71Class = isTotalRow ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900";
+                const clickAction = isTotalRow ? `onclick="alert('Hàng này hệ thống sẽ tự động tính tổng từ các hàng chi tiết bên dưới.\\n\\nVui lòng nhập liệu vào các hàng [1], [2], [3]...')" ` : "";
                 
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td class="sticky-col-1 border p-1 text-center font-bold text-slate-400">${isTotalRow ? '-' : idx}</td><td class="sticky-col-2 border p-2 text-left ${bgClass}">${name} ${isTotalRow ? '<br><span class="text-[10px] text-slate-500 font-normal italic normal-case">(Hệ thống tự tính, không nhập)</span>' : ''}</td>${COL_CODES.map(c => `<td class="p-0 border"><input type="number" class="table-input c${c} row-${idx} ${inputClass}" onchange="${isTotalRow ? '' : `calc71(${idx}); calcTotals()`}" value="0" ${inputDisabled}></td>`).join('')}<td class="p-1 border ${bg71Class} font-black res-71 text-[13px]">0</td><td class="p-0 border ${bg71Class}"><input type="number" class="table-input c72 row-${idx} ${isTotalRow ? 'bg-red-50 text-red-800 font-bold' : ''}" onchange="${isTotalRow ? '' : `calcTotals()`}" value="0" ${inputDisabled}></td>`;
+                tr.innerHTML = `<td class="sticky-col-1 border p-1 text-center font-bold text-slate-400">${isTotalRow ? '-' : idx}</td><td class="sticky-col-2 border p-2 text-left ${bgClass}">${name} ${isTotalRow ? '<br><span class="text-[10px] text-slate-500 font-normal italic normal-case">(Hệ thống tự tính, không nhập)</span>' : ''}</td>${COL_CODES.map(c => `<td class="p-0 border"><input type="number" class="table-input c${c} row-${idx} ${inputClass}" onchange="${isTotalRow ? '' : `calc71(${idx}); calcTotals()`}" value="0" ${inputDisabled} ${clickAction}></td>`).join('')}<td class="p-1 border ${bg71Class} font-black res-71 text-[13px]" ${clickAction}>0</td><td class="p-0 border ${bg71Class}"><input type="number" class="table-input c72 row-${idx} ${isTotalRow ? 'bg-red-50 text-red-800 font-bold' : ''}" onchange="${isTotalRow ? '' : `calcTotals()`}" value="0" ${inputDisabled} ${clickAction}></td>`;
                 body.appendChild(tr);
             });
         }
@@ -1214,7 +1215,7 @@
                 }
                 document.getElementById('khoasSummary').innerText = "Khoa đã nộp: " + data.khoaDaNop.join(", ");
                 
-                let grandTotals = Array(12).fill(0);
+                let grandTotals = data.thongKe[0]?.vals || Array(12).fill(0);
                 let mainTableHtml = `<div class="table-container"><table class="min-w-[1050px] text-center text-[11px] border-collapse">
                     <thead>
                         <tr>
@@ -1243,21 +1244,24 @@
                     </thead>
                     <tbody id="summaryTableBody" class="bg-white divide-y divide-x">`;
                 
+                // Hiển thị các hàng chi tiết (bỏ qua hàng đầu tiên là Tổng cộng)
                 data.thongKe.forEach((row, i) => {
+                    if (i === 0) return; 
                     mainTableHtml += `<tr class="${i%2===0?'bg-white':'bg-slate-50'} font-bold">
-                        <td class="sticky-col-1 border border-slate-200 ${i%2===0?'bg-white':'bg-slate-50'}">${i+1}</td>
+                        <td class="sticky-col-1 border border-slate-200 ${i%2===0?'bg-white':'bg-slate-50'}">${i}</td>
                         <td class="sticky-col-2 border border-slate-200 text-left p-2 text-blue-800 ${i%2===0?'bg-white':'bg-slate-50'}">${row.doiTuong}</td>
-                        ${row.vals.map((v, idx) => { grandTotals[idx] += v; return `<td class="border border-slate-200 ${idx>=10?'bg-amber-50 text-amber-900':''}">${v}</td>`; }).join('')}
+                        ${row.vals.map((v, idx) => `<td class="border border-slate-200 ${idx>=10?'bg-amber-50 text-amber-900':''}">${v}</td>`).join('')}
                     </tr>`;
                 });
                 
-                mainTableHtml += `<tr class="bg-slate-200 font-black">
-                    <td class="sticky-col-1 bg-slate-200"></td>
-                    <td class="sticky-col-2 text-right p-2 uppercase bg-slate-200">TỔNG CỘNG</td>
-                    ${grandTotals.map((v, idx) => `<td class="${idx>=10?'bg-amber-100':''}">${v}</td>`).join('')}
+                // Hàng TỔNG CỘNG (Khám chữa bệnh chung) với format nổi bật
+                mainTableHtml += `<tr class="bg-blue-100 font-black text-blue-900 border-t-2 border-blue-300">
+                    <td class="sticky-col-1 bg-blue-100">Σ</td>
+                    <td class="sticky-col-2 text-left p-2 uppercase bg-blue-100">TỔNG CỘNG (KHÁM CHỮA BỆNH CHUNG)</td>
+                    ${grandTotals.map((v, idx) => `<td class="border-y border-blue-200 ${idx>=10?'bg-amber-100 text-red-700':''}">${v}</td>`).join('')}
                 </tr></tbody></table></div>`;
                 
-                let indicatorsHtml = `<div class="mt-8 overflow-hidden rounded-xl border border-slate-200"><table class="min-w-full text-xs border-collapse"><thead class="bg-slate-50"><tr><th class="text-left p-3 border">Chỉ tiêu tổng hợp</th><th class="w-32 text-center p-3 border">Số lượng</th><th class="p-3 border">Ghi chú</th></tr></thead><tbody class="divide-y bg-white">`;
+                let indicatorsHtml = `<div class="mt-8 overflow-hidden rounded-xl border border-slate-200"><table class="hidden md:min-w-full text-xs border-collapse"><thead class="bg-slate-50"><tr><th class="text-left p-3 border">Chỉ tiêu tổng hợp</th><th class="w-32 text-center p-3 border">Số lượng</th><th class="p-3 border">Ghi chú</th></tr></thead><tbody class="divide-y bg-white">`;
                 indicatorsHtml += `<tr><td class="p-2 border font-bold uppercase">Số ca phẫu thuật (loại 3 trở lên)</td><td class="text-center font-black text-lg p-2 border">${data.chiSo.pt}</td><td class="p-2 border italic text-slate-400">Tổng từ ${start} đến ${end}</td></tr>`;
                 indicatorsHtml += `<tr><td class="p-2 border pl-6">- Trong đó: Cấp cứu do tai nạn</td><td class="text-center font-bold p-2 border text-orange-700">${data.chiSo.ptcc}</td><td class="p-2 border"></td></tr>`;
                 indicatorsHtml += `<tr><td class="p-2 border font-bold uppercase">Tổng trẻ sinh tại CSKCB</td><td class="text-center font-black text-lg p-2 border text-pink-700">${data.chiSo.tre}</td><td class="p-2 border"></td></tr>`;
