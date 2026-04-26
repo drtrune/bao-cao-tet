@@ -1,8 +1,61 @@
 /**
- * Config Publisher — Đọc config từ Sheet và publish lên GitHub Pages
+ * Config & Management — Quản lý cấu hình Spreadsheet và GitHub
  * 
  * Workflow: Sheet Config_* → readAllConfig() → publishConfigToGitHub() → config.js trên GitHub Pages
  */
+
+// ======================================================================
+// QUẢN TRỊ SPREADSHEET & QUYỀN
+// ======================================================================
+
+/**
+ * HÀM NÀY ĐỂ KÍCH HOẠT QUYỀN DRIVE (Chạy thủ công 1 lần nếu gặp lỗi)
+ */
+function FORCE_AUTH() {
+  DriveApp.getRootFolder();
+  console.log("Đã cấp quyền Drive thành công!");
+}
+
+/**
+ * Lấy Spreadsheet từ ID trong Script Properties
+ * Nếu chưa có ID, fallback về getActiveSpreadsheet()
+ */
+function getSpreadsheet() {
+  var ssId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  if (ssId) {
+    try {
+      return SpreadsheetApp.openById(ssId);
+    } catch (e) {
+      console.warn("Không mở được Spreadsheet bằng ID từ Properties: " + e.message);
+    }
+  }
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
+
+/**
+ * Lưu Spreadsheet ID vào Script Properties
+ */
+function setupSpreadsheetId() {
+  const ui = SpreadsheetApp.getUi();
+  const currentId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  const autoId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const masked = currentId ? ('...' + currentId.slice(-6)) : '(chưa cài đặt)';
+
+  const response = ui.prompt(
+    '📎 Cài đặt Spreadsheet ID',
+    'ID hiện tại: ' + masked + '\n' +
+    'ID của Sheet này: ' + autoId + '\n\n' +
+    'Nhấn OK để dùng ID của Sheet này, hoặc nhập ID khác:',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (response.getSelectedButton() === ui.Button.OK) {
+    const inputId = response.getResponseText().trim();
+    const finalId = inputId || autoId;
+    PropertiesService.getScriptProperties().setProperty('SPREADSHEET_ID', finalId);
+    ui.alert('✅ Đã lưu Spreadsheet ID!\n\nID: ' + finalId);
+  }
+}
 
 // ======================================================================
 // MENU TUỲ CHỈNH TRÊN GOOGLE SHEET
@@ -17,17 +70,57 @@ function onOpen() {
     .addItem('🚀 Publish Config lên GitHub', 'publishConfigToGitHub')
     .addSeparator()
     .addItem('🔑 Cài đặt GitHub PAT', 'setupGitHubPAT')
+    .addItem('📎 Cài đặt Spreadsheet ID', 'setupSpreadsheetId')
     .addItem('📋 Kiểm tra cấu hình', 'showCurrentConfig')
     .addToUi();
 }
 
 // ======================================================================
-// CÀI ĐẶT GITHUB PAT
+// ĐỌC CẤU HÌNH TỪ SHEET (Dành cho Backend)
+// ======================================================================
+
+/**
+ * Đọc danh sách đối tượng thống kê từ sheet Config_DoiTuong
+ */
+function getConfigDoiTuong() {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('Config_DoiTuong');
+  if (!sheet || sheet.getLastRow() < 2) {
+    return ["KHÁM CHỮA BỆNH CHUNG", "Tai nạn giao thông", "COVID-19", "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"];
+  }
+  var data = sheet.getDataRange().getValues();
+  var result = [];
+  for (var i = 1; i < data.length; i++) {
+    var ten = String(data[i][1] || '').trim();
+    if (ten) result.push(ten);
+  }
+  return result.length > 0 ? result : ["KHÁM CHỮA BỆNH CHUNG", "Tai nạn giao thông", "COVID-19", "Các đối tượng người bệnh khác"];
+}
+
+/**
+ * Đọc danh sách tất cả khoa phòng từ sheet Config_KhoaPhong
+ */
+function getConfigKhoaPhong() {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('Config_KhoaPhong');
+  if (!sheet || sheet.getLastRow() < 2) {
+    return ["Nội tổng hợp", "Ngoại tổng hợp", "Phụ Sản", "Nhi", "Liên chuyên khoa", "Khám bệnh", "Phòng cấp cứu", "Hồi sức Cấp cứu"];
+  }
+  var data = sheet.getDataRange().getValues();
+  var result = [];
+  for (var i = 1; i < data.length; i++) {
+    var ten = String(data[i][1] || '').trim();
+    if (ten) result.push(ten);
+  }
+  return result.length > 0 ? result : ["Nội tổng hợp", "Ngoại tổng hợp", "Phụ Sản", "Nhi", "Liên chuyên khoa", "Khám bệnh", "Phòng cấp cứu", "Hồi sức Cấp cứu"];
+}
+
+// ======================================================================
+// GITHUB PUBLISHER LOGIC
 // ======================================================================
 
 /**
  * Mở dialog để user nhập GitHub Personal Access Token
- * Token được lưu an toàn trong Script Properties (không lưu trong Sheet)
  */
 function setupGitHubPAT() {
   const ui = SpreadsheetApp.getUi();
@@ -53,15 +146,11 @@ function setupGitHubPAT() {
   }
 }
 
-// ======================================================================
-// ĐỌC TOÀN BỘ CONFIG TỪ SHEETS
-// ======================================================================
-
 /**
  * Đọc dữ liệu từ 1 sheet, trả về mảng object (header = key)
  */
 function readSheetAsObjects(sheetName) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet || sheet.getLastRow() < 2) return [];
 
@@ -87,7 +176,7 @@ function readSheetAsObjects(sheetName) {
  * Đọc sheet key-value (2 cột: Key, Value)
  */
 function readSheetAsKeyValue(sheetName) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet || sheet.getLastRow() < 2) return {};
 
@@ -104,7 +193,6 @@ function readSheetAsKeyValue(sheetName) {
  * Đọc toàn bộ config từ các sheet Config_* và build object APP_CONFIG
  */
 function readAllConfig() {
-  // 1. Khoa phòng
   const khoaPhongRaw = readSheetAsObjects('Config_KhoaPhong');
   const khoaPhong = khoaPhongRaw.map(function(r) {
     return {
@@ -116,7 +204,6 @@ function readAllConfig() {
     };
   });
 
-  // 2. Đối tượng (dòng trong bảng thống kê)
   const doiTuongRaw = readSheetAsObjects('Config_DoiTuong');
   const doiTuong = doiTuongRaw.map(function(r) {
     return {
@@ -126,7 +213,6 @@ function readAllConfig() {
     };
   });
 
-  // 3. Bảng thống kê (header 2 cấp + cột)
   const bangTKRaw = readSheetAsObjects('Config_BangThongKe');
   const colCodes = [];
   const headers = [];
@@ -138,13 +224,8 @@ function readAllConfig() {
     const congThuc = String(r['Công thức'] || '').trim();
     const kieuHT = String(r['Kiểu hiển thị'] || 'input').trim();
 
-    if (code && kieuHT === 'input') {
-      colCodes.push(code);
-    }
-
-    if (congThuc) {
-      computedCols[maCot] = congThuc;
-    }
+    if (code && kieuHT === 'input') colCodes.push(code);
+    if (congThuc) computedCols[maCot] = congThuc;
 
     headers.push({
       maCot: maCot,
@@ -157,7 +238,6 @@ function readAllConfig() {
     });
   });
 
-  // 4. Chỉ số khác
   const chiSoRaw = readSheetAsObjects('Config_ChiSoKhac');
   const chiSoKhac = chiSoRaw.map(function(r) {
     return {
@@ -171,7 +251,6 @@ function readAllConfig() {
     };
   });
 
-  // 5. Danh mục (nhóm theo cột Nhóm)
   const danhMucRaw = readSheetAsObjects('Config_DanhMuc');
   const danhMuc = {};
   danhMucRaw.forEach(function(r) {
@@ -185,77 +264,56 @@ function readAllConfig() {
     };
   });
 
-  // 6. Cấu hình ứng dụng (key-value)
   const app = readSheetAsKeyValue('Config_App');
 
   return {
     version: new Date().toISOString(),
     khoaPhong: khoaPhong,
     doiTuong: doiTuong,
-    bangThongKe: {
-      colCodes: colCodes,
-      headers: headers,
-      computedCols: computedCols
-    },
+    bangThongKe: { colCodes: colCodes, headers: headers, computedCols: computedCols },
     chiSoKhac: chiSoKhac,
     danhMuc: danhMuc,
     app: app
   };
 }
 
-// ======================================================================
-// PUBLISH LÊN GITHUB
-// ======================================================================
-
 /**
  * Đọc config → build file config.js → push lên GitHub Pages
  */
 function publishConfigToGitHub() {
   const ui = SpreadsheetApp.getUi();
-
-  // Kiểm tra PAT
   const pat = PropertiesService.getScriptProperties().getProperty('GITHUB_PAT');
   if (!pat) {
     ui.alert('❌ Chưa cài đặt GitHub PAT!\n\nVui lòng vào menu ⚙️ Config → 🔑 Cài đặt GitHub PAT');
     return;
   }
 
-  // Đọc thông tin repo từ Config_App
   const appConfig = readSheetAsKeyValue('Config_App');
   const repo = String(appConfig['GITHUB_REPO'] || '').trim();
   const configPath = String(appConfig['GITHUB_CONFIG_PATH'] || 'config.js').trim();
   const branch = String(appConfig['GITHUB_BRANCH'] || 'main').trim();
 
   if (!repo) {
-    ui.alert('❌ Thiếu GITHUB_REPO trong sheet Config_App!\n\nVí dụ: drtrune/bao-cao-tet');
+    ui.alert('❌ Thiếu GITHUB_REPO trong sheet Config_App!');
     return;
   }
 
   try {
-    // Đọc toàn bộ config
     const config = readAllConfig();
-
-    // Build nội dung file config.js
     const timestamp = Utilities.formatDate(new Date(), 'GMT+7', "yyyy-MM-dd'T'HH:mm:ssXXX");
     const jsContent = '/**\n' +
       ' * AUTO-GENERATED CONFIG — Không chỉnh sửa trực tiếp\n' +
-      ' * Nguồn: Google Sheet Config → GAS publishConfig → GitHub API\n' +
       ' * Cập nhật lúc: ' + timestamp + '\n' +
       ' */\n' +
       'window.APP_CONFIG = ' + JSON.stringify(config, null, 2) + ';\n';
 
-    // Lấy SHA của file hiện tại (nếu đã tồn tại, cần SHA để update)
     const currentSHA = getGitHubFileSHA(pat, repo, configPath, branch);
-
-    // Push lên GitHub
     var payload = {
       message: '🔄 Cập nhật config - ' + timestamp,
       content: Utilities.base64Encode(Utilities.newBlob(jsContent).getBytes()),
       branch: branch
     };
-    if (currentSHA) {
-      payload.sha = currentSHA;
-    }
+    if (currentSHA) payload.sha = currentSHA;
 
     var apiUrl = 'https://api.github.com/repos/' + repo + '/contents/' + configPath;
     var response = UrlFetchApp.fetch(apiUrl, {
@@ -269,20 +327,10 @@ function publishConfigToGitHub() {
       muteHttpExceptions: true
     });
 
-    var responseCode = response.getResponseCode();
-    if (responseCode === 200 || responseCode === 201) {
-      var result = JSON.parse(response.getContentText());
-      var htmlUrl = result.content ? result.content.html_url : '';
-      ui.alert(
-        '✅ Publish thành công!\n\n' +
-        '📁 File: ' + configPath + '\n' +
-        '🕐 Thời gian: ' + timestamp + '\n' +
-        '🔗 URL: ' + htmlUrl + '\n\n' +
-        '⏳ GitHub Pages sẽ cập nhật trong 1-10 phút.'
-      );
+    if (response.getResponseCode() === 200 || response.getResponseCode() === 201) {
+      ui.alert('✅ Publish thành công!\n\nGitHub Pages sẽ cập nhật sau vài phút.');
     } else {
-      var errorBody = response.getContentText();
-      ui.alert('❌ Lỗi GitHub API!\n\nHTTP ' + responseCode + ':\n' + errorBody);
+      ui.alert('❌ Lỗi GitHub API: ' + response.getContentText());
     }
   } catch (err) {
     ui.alert('❌ Lỗi: ' + err.toString());
@@ -290,26 +338,19 @@ function publishConfigToGitHub() {
 }
 
 /**
- * Lấy SHA hiện tại của file trên GitHub (cần cho lệnh update)
+ * Lấy SHA hiện tại của file trên GitHub
  */
 function getGitHubFileSHA(pat, repo, filePath, branch) {
   try {
     var apiUrl = 'https://api.github.com/repos/' + repo + '/contents/' + filePath + '?ref=' + branch;
     var response = UrlFetchApp.fetch(apiUrl, {
       method: 'GET',
-      headers: {
-        'Authorization': 'token ' + pat,
-        'Accept': 'application/vnd.github.v3+json'
-      },
+      headers: { 'Authorization': 'token ' + pat, 'Accept': 'application/vnd.github.v3+json' },
       muteHttpExceptions: true
     });
-    if (response.getResponseCode() === 200) {
-      return JSON.parse(response.getContentText()).sha;
-    }
+    if (response.getResponseCode() === 200) return JSON.parse(response.getContentText()).sha;
     return null;
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 /**
@@ -319,18 +360,10 @@ function showCurrentConfig() {
   const ui = SpreadsheetApp.getUi();
   try {
     const config = readAllConfig();
-    const summary = 
-      '📊 Config hiện tại:\n\n' +
-      '🏥 Khoa phòng: ' + config.khoaPhong.length + ' khoa\n' +
-      '📋 Đối tượng: ' + config.doiTuong.length + ' dòng\n' +
-      '📊 Cột bảng: ' + config.bangThongKe.colCodes.length + ' cột\n' +
-      '📈 Chỉ số khác: ' + config.chiSoKhac.length + ' chỉ số\n' +
-      '📁 Danh mục: ' + Object.keys(config.danhMuc).join(', ') + '\n' +
-      '⚙️ App settings: ' + Object.keys(config.app).length + ' keys\n\n' +
-      '🕐 Version: ' + config.version;
-
+    const summary = '📊 Config hiện tại:\n\n' +
+      '🏥 Khoa phòng: ' + config.khoaPhong.length + '\n' +
+      '📋 Đối tượng: ' + config.doiTuong.length + '\n' +
+      '⚙️ Version: ' + config.version;
     ui.alert(summary);
-  } catch (err) {
-    ui.alert('❌ Lỗi đọc config: ' + err.toString());
-  }
+  } catch (err) { ui.alert('❌ Lỗi: ' + err.toString()); }
 }

@@ -1,18 +1,11 @@
 /**
  * Backend Google Apps Script - Lễ 30/4-1/5
- * Cập nhật đầy đủ các hàm để khớp với Frontend.
+ * Chứa logic nghiệp vụ xử lý dữ liệu và API Router
  */
-
 
 /**
- * HÀM NÀY ĐỂ KÍCH HOẠT QUYỀN DRIVE (Chạy thủ công 1 lần nếu gặp lỗi)
- * Chọn hàm này trên thanh công cụ và bấm Run > Review Permissions > Allow
+ * Xử lý giao diện Web App
  */
-function FORCE_AUTH() {
-  DriveApp.getRootFolder();
-  console.log("Đã cấp quyền Drive thành công!");
-}
-
 function doGet(e) {
   var template = HtmlService.createTemplateFromFile("index");
   // Truyền URL WebApp xuống để frontend gọi fetch
@@ -23,52 +16,11 @@ function doGet(e) {
     .addMetaTag("viewport", "width=device-width, initial-scale=1");
 }
 
+/**
+ * Hàm include file HTML module
+ */
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
-
-
-
-// ======================================================================
-// HÀM HELPER ĐỌC CONFIG TỪ SHEET
-// ======================================================================
-
-/**
- * Đọc danh sách đối tượng thống kê từ sheet Config_DoiTuong
- * Trả về mảng tên đối tượng (không bao gồm dòng tổng)
- */
-function getConfigDoiTuong() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('Config_DoiTuong');
-  if (!sheet || sheet.getLastRow() < 2) {
-    return ["KHÁM CHỬa BỆNH CHUNG", "Tai nạn giao thông", "COVID-19", "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"];
-  }
-  var data = sheet.getDataRange().getValues();
-  var result = [];
-  for (var i = 1; i < data.length; i++) {
-    var ten = String(data[i][1] || '').trim();
-    if (ten) result.push(ten);
-  }
-  return result.length > 0 ? result : ["KHÁM CHỬa BỆNH CHUNG", "Tai nạn giao thông", "COVID-19", "Các đối tượng người bệnh khác"];
-}
-
-/**
- * Đọc danh sách tất cả khoa phòng từ sheet Config_KhoaPhong
- * Trả về mảng tên khoa
- */
-function getConfigKhoaPhong() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('Config_KhoaPhong');
-  if (!sheet || sheet.getLastRow() < 2) {
-    return ["Nội tổng hợp", "Ngoại tổng hợp", "Phụ Sản", "Nhi", "Liên chuyên khoa", "Khám bệnh", "Phòng cấp cứu", "Hồi sức Cấp cứu"];
-  }
-  var data = sheet.getDataRange().getValues();
-  var result = [];
-  for (var i = 1; i < data.length; i++) {
-    var ten = String(data[i][1] || '').trim();
-    if (ten) result.push(ten);
-  }
-  return result.length > 0 ? result : ["Nội tổng hợp", "Ngoại tổng hợp", "Phụ Sản", "Nhi", "Liên chuyên khoa", "Khám bệnh", "Phòng cấp cứu", "Hồi sức Cấp cứu"];
 }
 
 // ======================================================================
@@ -80,7 +32,7 @@ function getConfigKhoaPhong() {
  * (Thay thế cho cơ chế xoá cứng để đảm bảo lưu vết dữ liệu y khoa)
  */
 function deactivateExistingReport(khoa, ngay) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   let nextVersion = 1;
 
   // Xử lý trong Data_ThongKe
@@ -95,378 +47,212 @@ function deactivateExistingReport(khoa, ngay) {
           const ver = parseInt(dataTK[i][23]) || 1;
           if (ver >= nextVersion) nextVersion = ver + 1;
           
-          // Đánh dấu là Lịch sử (cột 23 là W), và gán phiên bản nếu chưa có (cột 24 là X)
-          sheetTK.getRange(i + 1, 23).setValue("Lịch sử");
-          if (!dataTK[i][23]) sheetTK.getRange(i + 1, 24).setValue(ver);
+          sheetTK.getRange(i + 1, 23).setValue("Lịch sử"); // Cột W (index 22)
+          sheetTK.getRange(i + 1, 25).setValue(new Date()); // Cột Y (index 24)
         }
       }
     }
   }
 
-  // Xử lý trong Data_DanhSachCa
-  const sheetBN = ss.getSheetByName("Data_DanhSachCa");
+  // Xử lý trong Data_BenhNhan
+  const sheetBN = ss.getSheetByName("Data_BenhNhan");
   if (sheetBN && sheetBN.getLastRow() > 1) {
     const dataBN = sheetBN.getDataRange().getValues();
     for (let i = dataBN.length - 1; i >= 1; i--) {
       const rowDate = Utilities.formatDate(new Date(dataBN[i][1]), "GMT+7", "yyyy-MM-dd");
       if (dataBN[i][2] === khoa && rowDate === ngay) {
-        const currentStatus = dataBN[i][40];
-        if (currentStatus !== "Lịch sử") {
-          const ver = parseInt(dataBN[i][41]) || 1;
-          sheetBN.getRange(i + 1, 41).setValue("Lịch sử");
-          if (!dataBN[i][41]) sheetBN.getRange(i + 1, 42).setValue(ver);
+        if (dataBN[i][32] !== "Lịch sử") {
+          sheetBN.getRange(i + 1, 33).setValue("Lịch sử"); // Cột AG (index 32)
         }
       }
     }
   }
-
+  
   return nextVersion;
 }
 
 /**
- * Hàm lưu báo cáo — cơ chế UPSERT (xoá cũ rồi ghi mới)
- * Đảm bảo mỗi (khoa, ngày) chỉ có 1 bộ dữ liệu duy nhất
+ * Lưu báo cáo mới
  */
 function saveReport(payload) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     const sheetTK =
       ss.getSheetByName("Data_ThongKe") || ss.insertSheet("Data_ThongKe");
     const sheetBN =
-      ss.getSheetByName("Data_DanhSachCa") || ss.insertSheet("Data_DanhSachCa");
+      ss.getSheetByName("Data_BenhNhan") || ss.insertSheet("Data_BenhNhan");
 
-    // Tạo header nếu sheet trống
-    if (sheetTK.getLastRow() === 0) {
-      sheetTK.appendRow([
-        "Timestamp", "Ngày trực", "Khoa", "Đối tượng",
-        "(1)", "(2.1)", "(2.2)", "(3)", "(4.1)", "(4.2)",
-        "(5.1)", "(5.2)", "(6.1)", "(6.2)", "(7.1)", "(7.2)",
-        "PT", "PT_CC", "Mau", "Tre", "Mo", "SDT_NguoiBaoCao",
-        "Trạng thái", "Phiên bản"
-      ]);
-    }
+    const khoa = payload.khoa;
+    const ngayStr = payload.ngay;
+    const ngay = new Date(ngayStr + "T00:00:00+07:00");
+    const sdt = payload.sdtNguoiBaoCao || "";
+    const now = new Date();
 
-    if (sheetBN.getLastRow() === 0) {
-      sheetBN.appendRow([
-        "Timestamp", "Ngày trực", "Khoa",
-        "Mã HSBA", "Mã BN", "Họ tên", "Ngày sinh", "Tuổi", "Giới",
-        "Dân tộc", "Quốc tịch", "BHYT",
-        "Tỉnh", "Huyện", "Xã", "Thôn",
-        "Lý do", "Ngày tai nạn", "Ngày vào", "Ngày ra",
-        "Kết quả", "Tình trạng", "Chuyển từ", "Nơi phát hiện",
-        "Chẩn đoán", "ICD-10", "File HSBA URL",
-        "Loại giấy tờ", "Số giấy tờ", "Ngày cấp", "Nơi cấp",
-        "HT Tỉnh", "HT Huyện", "HT Xã", "HT Thôn",
-        "PH Tỉnh", "PH Huyện", "PH Xã", "PH Thôn",
-        "Chẩn đoán chi tiết",
-        "Trạng thái", "Phiên bản"
-      ]);
-    }
+    // 1. Vô hiệu hóa bản ghi cũ và lấy version tiếp theo
+    const phienBan = deactivateExistingReport(khoa, ngayStr);
 
-    // Đánh dấu dữ liệu cũ là "Lịch sử" thay vì xoá (Cơ chế lưu vết)
-    const currentVersion = deactivateExistingReport(payload.khoa, payload.ngay);
-
-    // Ghi dữ liệu mới
-    const timestamp = new Date();
-    payload.thongKe.forEach((row) => {
-      sheetTK.appendRow([
-        timestamp,
-        payload.ngay,
-        payload.khoa,
+    // 2. Lưu số liệu thống kê (Data_ThongKe)
+    const rowTKBase = [now, ngay, khoa, sdt];
+    const thongKeRows = payload.thongKe.map((row) => {
+      return [
+        ...rowTKBase,
         row.doiTuong,
-        row.c1, row.c21, row.c22, row.c3,
-        row.c41, row.c42, row.c51, row.c52,
-        row.c61, row.c62, row.c71, row.c72,
+        row.c1, row.c21, row.c22, row.c3, row.c41, row.c42,
+        row.c51, row.c52, row.c61, row.c62, row.c71, row.c72,
         payload.chiSo.phauThuat,
         payload.chiSo.phauThuatCC,
         payload.chiSo.mau,
         payload.chiSo.treSinh,
         payload.chiSo.treSinhMo,
-        "'" + (payload.sdtNguoiBaoCao || ''),
-        "Mới nhất",
-        currentVersion
-      ]);
+        "Đã nộp",
+        phienBan,
+        now,
+      ];
     });
+    if (thongKeRows.length > 0) {
+      sheetTK
+        .getRange(sheetTK.getLastRow() + 1, 1, thongKeRows.length, 25)
+        .setValues(thongKeRows);
+    }
 
+    // 3. Lưu danh sách bệnh nhân (Data_BenhNhan)
     if (payload.benhNhan && payload.benhNhan.length > 0) {
-      payload.benhNhan.forEach((bn) => {
-        if (bn.ten && bn.ten.trim() !== "") {
-          // Xử lý file HSBA: Payload giờ sẽ gửi URL file đã upload trước đó
-          let fileUrl = bn.fileHSBAUrl || '';
-          
-          // Tạo summary cho nơi phát hiện cũ
-          const noiPhatHienSummary = [bn.phThon, bn.phXa, bn.phHuyen, bn.phTinh].filter(x => x).join(', ');
-
-          sheetBN.appendRow([
-            timestamp,
-            payload.ngay,
-            payload.khoa,
-            bn.maHSBA || '', bn.maBN || '', bn.ten,
-            bn.ngaySinh || '', bn.tuoi || '', bn.gioi || '',
-            bn.danToc || '', bn.quocTich || '', bn.bhyt || '',
-            bn.tinh || '', bn.huyen || '', bn.xa || '', bn.thon || '',
-            bn.lyDo || '',
-            bn.ngayTaiNan || '',
-            bn.ngayVao || '', bn.ngayRa || '',
-            bn.ketQua || '', bn.tinhTrang || '',
-            bn.chuyenTu || '', noiPhatHienSummary || '',
-            bn.chanDoan || '', bn.icd || '',
-            fileUrl,
-            // New columns:
-            bn.loaiGiayTo || '', bn.soGiayTo || '', bn.ngayCap || '', bn.noiCap || '',
-            bn.htTinh || '', bn.htHuyen || '', bn.htXa || '', bn.htThon || '',
-            bn.phTinh || '', bn.phHuyen || '', bn.phXa || '', bn.phThon || '',
-            bn.chanDoanChiTiet || '',
-            "Mới nhất",
-            currentVersion
-          ]);
-        }
+      const bnRows = payload.benhNhan.map((bn) => {
+        return [
+          now, ngay, khoa,
+          bn.maHSBA, bn.maBN, bn.ten, bn.ngaySinh, bn.tuoi, bn.gioi, bn.danToc, bn.quocTich,
+          bn.loaiGiayTo, bn.soGiayTo, bn.ngayCap, bn.noiCap, bn.bhyt,
+          bn.tinh, bn.xa, bn.thon,
+          bn.htTinh, bn.htXa, bn.htThon,
+          bn.lyDo, bn.phTinh, bn.phXa, bn.phThon,
+          bn.ngayTaiNan, bn.ngayVao, bn.ngayRa, bn.ketQua, bn.tinhTrang,
+          bn.chuyenTu, bn.chanDoan, bn.chanDoanChiTiet, bn.icd, bn.fileHSBAUrl,
+          "Đã nộp", phienBan, now
+        ];
       });
+      sheetBN
+        .getRange(sheetBN.getLastRow() + 1, 1, bnRows.length, 39)
+        .setValues(bnRows);
     }
 
-    // Tự động làm mới Sheet vật lý cho ngày báo cáo này
-    refreshPhysicalSummarySheetRange(payload.ngay, payload.ngay);
+    // 4. Xóa các file cũ trên Drive (nếu có yêu cầu xóa)
+    if (payload.filesToDelete && payload.filesToDelete.length > 0) {
+       payload.filesToDelete.forEach(url => deleteDriveFile(url));
+    }
 
-    // KHÔNG XÓA FILE CŨ TRÊN DRIVE NỮA (Để đảm bảo lưu vết - Audit Trail)
-    // Các file cũ vẫn được giữ lại để các phiên bản Lịch sử có thể truy cập được.
-    /* 
-    if (payload.filesToDelete && Array.isArray(payload.filesToDelete)) {
-      payload.filesToDelete.forEach(function(url) {
-        deleteDriveFile(url);
-      });
-    } 
-    */
+    // 5. Cập nhật sheet Báo cáo tổng
+    refreshPhysicalSummarySheetRange(ngayStr, ngayStr);
 
-    return { success: true };
+    return { success: true, version: phienBan };
   } catch (e) {
-    throw new Error(e.toString());
+    throw new Error("Lỗi lưu báo cáo: " + e.toString());
   }
 }
 
 // ======================================================================
-
-/**
- * Hàm upload file độc lập (được gọi từ Frontend trước khi lưu báo cáo)
- */
-function uploadSingleFile(fileData) {
-  try {
-    const folderName = "Báo cáo tết";
-    let folder;
-    try {
-      const folders = DriveApp.getFoldersByName(folderName);
-      folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
-    } catch (e) {
-      folder = DriveApp.getRootFolder();
-    }
-
-    const blob = Utilities.newBlob(
-      Utilities.base64Decode(fileData.data),
-      fileData.mimeType,
-      fileData.name
-    );
-    const file = folder.createFile(blob);
-    
-    try {
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch (e) {
-      file.setAccess(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    }
-
-    return {
-      success: true,
-      url: 'https://drive.google.com/file/d/' + file.getId() + '/view?usp=sharing'
-    };
-  } catch (err) {
-    return { success: false, error: err.toString() };
-  }
-}
-
-// ======================================================================
-// PHẦN 2: ĐỌC DỮ LIỆU ĐÃ GỬI (CHO TÍNH NĂNG LOAD + SỬA)
+// PHẦN 2: TRUY XUẤT DỮ LIỆU ĐÃ LƯU
 // ======================================================================
 
 /**
- * Lấy dữ liệu đã gửi trước đó của 1 khoa + 1 ngày
- * Dùng để load vào form khi user chọn khoa + ngày
+ * Lấy báo cáo đã lưu của 1 khoa vào 1 ngày (Bản ghi mới nhất)
  */
 function getExistingReport(khoa, ngay) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     let result = { found: false, thongKe: [], benhNhan: [], chiSo: {} };
 
     // Đọc Data_ThongKe
     const sheetTK = ss.getSheetByName("Data_ThongKe");
     if (sheetTK && sheetTK.getLastRow() > 1) {
-      const dataTK = sheetTK.getDataRange().getValues();
-      
-      // 1. Tìm báo cáo ngày hôm nay
-      for (let i = 1; i < dataTK.length; i++) {
-        const rowDate = Utilities.formatDate(new Date(dataTK[i][1]), "GMT+7", "yyyy-MM-dd");
-        if (dataTK[i][2] === khoa && rowDate === ngay) {
-          result.found = true;
-          // ... logic cũ ...
-          // Lưu ý: Cột 7.1 là index 14 (cột O) trong sheet Data_ThongKe
-          result.thongKe.push({
-            doiTuong: dataTK[i][3],
-            c1: dataTK[i][4], c21: dataTK[i][5], c22: dataTK[i][6],
-            c3: dataTK[i][7], c41: dataTK[i][8], c42: dataTK[i][9],
-            c51: dataTK[i][10], c52: dataTK[i][11],
-            c61: dataTK[i][12], c62: dataTK[i][13],
-            c71: dataTK[i][14], c72: dataTK[i][15],
-          });
-          // Lấy chiSo từ dòng đầu tiên tìm thấy
-          if (!result.chiSo || !result.chiSo.phauThuat) {
-            result.chiSo = {
-              phauThuat: dataTK[i][16] || 0,
-              phauThuatCC: dataTK[i][17] || 0,
-              mau: dataTK[i][18] || 0,
-              treSinh: dataTK[i][19] || 0,
-              treSinhMo: dataTK[i][20] || 0,
-            };
-            result.sdtNguoiBaoCao = dataTK[i][21] || '';
-          }
-        }
-      }
+      const data = sheetTK.getDataRange().getValues();
+      // Tìm các dòng khớp (khoa, ngay) và không phải "Lịch sử"
+      const matches = data.filter((row, idx) => {
+        if (idx === 0) return false;
+        const rowDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
+        return row[2] === khoa && rowDate === ngay && row[22] !== "Lịch sử";
+      });
 
-      // 2. Nếu KHÔNG thấy báo cáo hôm nay -> Tìm báo cáo HÔM QUA để lấy cột 7.1 -> cột 1
-      if (!result.found) {
-        const homNayDate = new Date(ngay);
-        const homQuaDate = new Date(homNayDate.getTime() - 24 * 60 * 60 * 1000);
-        const homQuaStr = Utilities.formatDate(homQuaDate, "GMT+7", "yyyy-MM-dd");
-        
-        // Helper chuẩn hóa tên: bỏ dấu *, trim space
-        const autoCheck = (str) => (str || "").replace(/\*/g, "").trim();
-
-        // Mảng mapping doiTuong -> giaTriCot71HomQua
-        let prevDataMap = {};
-        
-        for (let i = 1; i < dataTK.length; i++) {
-            const rowDate = Utilities.formatDate(new Date(dataTK[i][1]), "GMT+7", "yyyy-MM-dd");
-            if (dataTK[i][2] === khoa && rowDate === homQuaStr) {
-                // Key là doiTuong (Khám bệnh, Vào viện...) -> Chuẩn hóa key
-                prevDataMap[autoCheck(dataTK[i][3])] = dataTK[i][14] || 0; 
-            }
-        }
-
-        // Tạo khung dữ liệu rỗng cho ngày hôm nay nhưng điền sẵn cột 1 từ hôm qua
-        // Danh sách đối tượng mặc định chuẩn (Khớp với ROW_NAMES ở frontend index.html)
-        const defaultDoiTuong = [
-            "KHÁM CHỮA BỆNH CHUNG",
-            "Tai nạn giao thông",
-            "COVID-19",
-            "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"
-        ];        
-        // Cần đảm bảo thứ tự đúng như bảng nhập liệu
-        // Ở frontend danh sách dòng là cố định, backend trả về list object
-        // Ta tạo list object với c1 lấy từ prevDataMap
-        if (Object.keys(prevDataMap).length > 0) {
-             result.failButFoundPrev = true; // Cờ báo hiệu: tìm thấy data cũ
-             result.thongKe = defaultDoiTuong.map(dt => ({
-                doiTuong: dt,
-                c1: prevDataMap[autoCheck(dt)] || 0, // Dùng key chuẩn hóa để lookup
-                c21: 0, c22: 0, c3: 0, c41: 0, c42: 0, c51: 0, c52: 0, c61: 0, c62: 0, c71: 0, c72: 0
-             }));
-        }
+      if (matches.length > 0) {
+        result.found = true;
+        result.sdtNguoiBaoCao = matches[0][3];
+        result.chiSo = {
+          phauThuat: matches[0][17],
+          phauThuatCC: matches[0][18],
+          mau: matches[0][19],
+          treSinh: matches[0][20],
+          treSinhMo: matches[0][21],
+        };
+        result.thongKe = matches.map((m) => {
+          return {
+            doiTuong: m[4],
+            c1: m[5], c21: m[6], c22: m[7], c3: m[8], c41: m[9], c42: m[10],
+            c51: m[11], c52: m[12], c61: m[13], c62: m[14], c71: m[15], c72: m[16],
+          };
+        });
       }
     }
 
-    // Đọc Data_DanhSachCa
-    const sheetBN = ss.getSheetByName("Data_DanhSachCa");
+    // Đọc Data_BenhNhan
+    const sheetBN = ss.getSheetByName("Data_BenhNhan");
     if (sheetBN && sheetBN.getLastRow() > 1) {
       const dataBN = sheetBN.getDataRange().getValues();
-      for (let i = 1; i < dataBN.length; i++) {
-        const trangThai = dataBN[i][40];
-        if (trangThai === "Lịch sử") continue;
-
-        const rowDate = Utilities.formatDate(new Date(dataBN[i][1]), "GMT+7", "yyyy-MM-dd");
-        if (dataBN[i][2] === khoa && rowDate === ngay) {
-          const formatDT = (val) => {
-            if (!val) return '';
-            try {
-              const d = new Date(val);
-              return Utilities.formatDate(d, 'GMT+7', "yyyy-MM-dd'T'HH:mm");
-            } catch (e) { return String(val); }
+      result.benhNhan = dataBN
+        .filter((row, idx) => {
+          if (idx === 0) return false;
+          const rowDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
+          return row[2] === khoa && rowDate === ngay && row[36] !== "Lịch sử";
+        })
+        .map((bn) => {
+          return {
+            maHSBA: bn[3], maBN: bn[4], ten: bn[5], ngaySinh: bn[6], tuoi: bn[7], gioi: bn[8],
+            danToc: bn[9], quocTich: bn[10], loaiGiayTo: bn[11], soGiayTo: bn[12], ngayCap: bn[13],
+            noiCap: bn[14], bhyt: bn[15], tinh: bn[16], xa: bn[17], thon: bn[18],
+            htTinh: bn[19], htXa: bn[20], htThon: bn[21], lyDo: bn[22], phTinh: bn[23], phXa: bn[24], phThon: bn[25],
+            ngayTaiNan: bn[26], ngayVao: bn[27], ngayRa: bn[28], ketQua: bn[29], tinhTrang: bn[30],
+            chuyenTu: bn[31], chanDoan: bn[32], chanDoanChiTiet: bn[33], icd: bn[34], fileHSBAUrl: bn[35]
           };
-          result.benhNhan.push({
-            maHSBA: dataBN[i][3] || '',
-            maBN: dataBN[i][4] || '',
-            ten: dataBN[i][5] || '',
-            ngaySinh: dataBN[i][6] ? Utilities.formatDate(new Date(dataBN[i][6]), 'GMT+7', 'yyyy-MM-dd') : '',
-            tuoi: dataBN[i][7] || '',
-            gioi: dataBN[i][8] || '',
-            danToc: dataBN[i][9] || '',
-            quocTich: dataBN[i][10] || '',
-            bhyt: dataBN[i][11] || '',
-            tinh: dataBN[i][12] || '',
-            huyen: dataBN[i][13] || '',
-            xa: dataBN[i][14] || '',
-            thon: dataBN[i][15] || '',
-            lyDo: dataBN[i][16] || '',
-            ngayTaiNan: formatDT(dataBN[i][17]),
-            ngayVao: formatDT(dataBN[i][18]),
-            ngayRa: formatDT(dataBN[i][19]),
-            ketQua: dataBN[i][20] || '',
-            tinhTrang: dataBN[i][21] || '',
-            chuyenTu: dataBN[i][22] || '',
-            noiPhatHien: dataBN[i][23] || '',
-            chanDoan: dataBN[i][24] || '',
-            icd: dataBN[i][25] || '',
-            fileHSBAUrl: dataBN[i][26] || '',
-            // New columns reading
-            loaiGiayTo: dataBN[i][27] || '', 
-            soGiayTo: dataBN[i][28] || '', 
-            ngayCap: dataBN[i][29] ? Utilities.formatDate(new Date(dataBN[i][29]), 'GMT+7', 'yyyy-MM-dd') : '', 
-            noiCap: dataBN[i][30] || '',
-            htTinh: dataBN[i][31] || '', 
-            htHuyen: dataBN[i][32] || '', 
-            htXa: dataBN[i][33] || '', 
-            htThon: dataBN[i][34] || '',
-            phTinh: dataBN[i][35] || '', 
-            phHuyen: dataBN[i][36] || '', 
-            phXa: dataBN[i][37] || '', 
-            phThon: dataBN[i][38] || '',
-            chanDoanChiTiet: dataBN[i][39] || ''
-          });
-        }
-      }
+        });
     }
 
     return result;
   } catch (e) {
-    return { error: e.toString(), found: false };
+    throw new Error("Lỗi lấy dữ liệu: " + e.toString());
   }
 }
 
 // ======================================================================
-// PHẦN 3: TỔNG HỢP DỮ LIỆU (ĐÃ SỬA LỖI)
+// PHẦN 3: TỔNG HỢP BÁO CÁO TOÀN VIỆN
 // ======================================================================
 
 /**
- * Tổng hợp dữ liệu theo dải ngày — ĐÃ SỬA 3 LỖI LOGIC:
- * - Lỗi 2: Cột 7.2 giờ chỉ lấy ngày cuối (snapshot), không cộng dồn
- * - Lỗi 3: Cột 7.1 dùng ngày cuối thực tế (maxDateFound) thay vì endDate cứng
- * - Lỗi 4: Cột BN cũ (1) dùng ngày đầu thực tế (minDateFound) thay vì startDate cứng
- * (Lỗi 1 trùng lặp đã được sửa bằng cơ chế upsert ở saveReport)
+ * Lấy dữ liệu tổng hợp từ nhiều khoa trong một khoảng ngày
  */
 function getAggregatedReportRange(startDate, endDate) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     const sheet = ss.getSheetByName("Data_ThongKe");
     if (!sheet) return { khoaDaNop: [], thongKe: [], chiSo: {} };
 
     let data = sheet.getDataRange().getValues();
-    data.shift(); // Loại bỏ header
+    if (data.length <= 1) return { khoaDaNop: [], thongKe: [], chiSo: {} };
 
-    // --- BẢO ĐẢM CHỈ LẤY DỮ LIỆU MỚI NHẤT CỦA MỖI (KHOA, NGÀY) ---
-    let latestTsTK = {};
-    data.forEach((row) => {
-      const rowDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
-      const khoa = row[2];
-      const ts = new Date(row[0]).getTime();
+    // Tìm version mới nhất cho mỗi cặp (khoa, ngày)
+    let latestTsTK = {}; // khoa_ngày -> timestamp lớn nhất
+    for (let i = 1; i < data.length; i++) {
+      const rowDate = Utilities.formatDate(new Date(data[i][1]), "GMT+7", "yyyy-MM-dd");
+      const khoa = data[i][2];
+      const trangThai = data[i][22];
+      const ts = new Date(data[i][0]).getTime();
       const key = khoa + "_" + rowDate;
-      if (!latestTsTK[key] || ts > latestTsTK[key]) latestTsTK[key] = ts;
-    });
 
+      if (trangThai !== "Lịch sử") {
+        if (!latestTsTK[key] || ts > latestTsTK[key]) {
+          latestTsTK[key] = ts;
+        }
+      }
+    }
+
+    // Lọc data: chỉ lấy các bản ghi nộp mới nhất trong khoảng ngày
     data = data.filter((row) => {
       const trangThai = row[22];
       if (trangThai === "Lịch sử") return false;
@@ -506,158 +292,99 @@ function getAggregatedReportRange(startDate, endDate) {
       }
     });
 
-    // === Bước 2: Duyệt và tổng hợp ===
-    data.forEach((row) => {
-      const rowDate = Utilities.formatDate(
-        new Date(row[1]), "GMT+7", "yyyy-MM-dd"
-      );
+    // Nếu không tìm thấy ngày nào có dữ liệu
+    if (minDateFound === "") return report;
 
-      if (rowDate >= startDate && rowDate <= endDate) {
-        const khoa = row[2];
-        const doiTuong = row[3];
-        const idx = ROW_NAMES.indexOf(doiTuong);
+    // === Bước 2: Duyệt từng ngày TRONG KHOẢNG CÓ DỮ LIỆU để cộng dồn ===
+    let currentDate = new Date(minDateFound + "T00:00:00+07:00");
+    const lastDate = new Date(maxDateFound + "T00:00:00+07:00");
 
-        if (!report.khoaDaNop.includes(khoa)) report.khoaDaNop.push(khoa);
+    while (currentDate <= lastDate) {
+      const dStr = Utilities.formatDate(currentDate, "GMT+7", "yyyy-MM-dd");
+      
+      // Lấy dữ liệu của ngày dStr
+      const dayData = data.filter(r => Utilities.formatDate(new Date(r[1]), "GMT+7", "yyyy-MM-dd") === dStr);
+      
+      // Tập hợp các khoa đã báo cáo trong ngày này
+      const khoasInDay = [...new Set(dayData.map(r => r[2]))];
+      khoasInDay.forEach(k => {
+        if (!departmentDates[k]) departmentDates[k] = [];
+        departmentDates[k].push(dStr);
+      });
 
+      // Cộng dồn chỉ số (Lưu ý: Chỉ số toàn viện = Tổng chỉ số của tất cả các khoa TRONG TẤT CẢ CÁC NGÀY)
+      // Vì mỗi khoa báo cáo "số liệu trong ngày", nên tổng cộng dồn là đúng.
+      dayData.forEach(row => {
+        // Chỉ cộng chỉ số 1 lần cho mỗi dòng đối tượng đầu tiên của khoa trong ngày
+        // (Tránh cộng lặp do 1 khoa có 4 dòng đối tượng)
+        if (row[4] === ROW_NAMES[0]) {
+          report.chiSo.pt += (parseFloat(row[17]) || 0);
+          report.chiSo.ptcc += (parseFloat(row[18]) || 0);
+          report.chiSo.mau += (parseFloat(row[19]) || 0);
+          report.chiSo.tre += (parseFloat(row[20]) || 0);
+          report.chiSo.mo += (parseFloat(row[21]) || 0);
+        }
+
+        const idx = ROW_NAMES.indexOf(row[4]);
         if (idx !== -1) {
-          // Các cột CỘNG DỒN (số dòng chảy): 2.1, 2.2, 3, 4.1, 4.2, 5.1, 5.2, 6.1, 6.2
-          // KHÔNG bao gồm 7.2 nữa (đã sửa Lỗi 2)
-          const dynamicColIndices = [5, 6, 7, 8, 9, 10, 11, 12, 13];
-          const dynamicValsIndices = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-          dynamicColIndices.forEach((colIdx, i) => {
-            report.thongKe[idx].vals[dynamicValsIndices[i]] += parseFloat(
-              row[colIdx] || 0,
-            );
-          });
-
-          // BN cũ (1) — chỉ lấy từ ngày ĐẦU TIÊN thực tế có data (sửa Lỗi 4)
-          if (rowDate === minDateFound) {
-            report.thongKe[idx].vals[0] += parseFloat(row[4] || 0);
-          }
-          // BN hiện có (7.1) + Ca nặng (7.2) — chỉ lấy từ ngày CUỐI CÙNG thực tế (sửa Lỗi 2 & 3)
-          if (rowDate === maxDateFound) {
-            report.thongKe[idx].vals[10] += parseFloat(row[14] || 0);
-            report.thongKe[idx].vals[11] += parseFloat(row[15] || 0);
+          for (let j = 0; j < 12; j++) {
+            report.thongKe[idx].vals[j] += (parseFloat(row[5 + j]) || 0);
           }
         }
-
-        // Chỉ số chuyên biệt — chống trùng bằng key khoa_ngày
-        const key = khoa + "_" + rowDate;
-        if (!departmentDates[key]) {
-          departmentDates[key] = {
-            pt: parseFloat(row[16] || 0),
-            ptcc: parseFloat(row[17] || 0),
-            mau: parseFloat(row[18] || 0),
-            tre: parseFloat(row[19] || 0),
-            mo: parseFloat(row[20] || 0),
-            sdt: row[21] || ''
-          };
-        }
-      }
-    });
-
-    // === Bước 3: Lấy dữ liệu danh sách bệnh nhân ===
-    const sheetBN = ss.getSheetByName("Data_DanhSachCa");
-    report.benhNhan = [];
-
-    if (sheetBN && sheetBN.getLastRow() > 1) {
-      let dataBN = sheetBN.getDataRange().getValues();
-      dataBN.shift(); // Bỏ header
-
-      let latestTsBN = {};
-      dataBN.forEach((row) => {
-        const bnDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
-        const khoa = row[2];
-        const ts = new Date(row[0]).getTime();
-        const key = khoa + "_" + bnDate;
-        if (!latestTsBN[key] || ts > latestTsBN[key]) latestTsBN[key] = ts;
       });
 
-      const formatDT = (val) => {
-        if (!val) return '';
-        try { return Utilities.formatDate(new Date(val), 'GMT+7', "yyyy-MM-dd HH:mm"); }
-        catch (e) { return String(val); }
-      };
-      dataBN.forEach(row => {
-        const bnDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
-        const khoa = row[2];
-        const ts = new Date(row[0]).getTime();
-        const key = khoa + "_" + bnDate;
-
-        if (ts === latestTsBN[key] && bnDate >= startDate && bnDate <= endDate) {
-          report.benhNhan.push({
-            ngay: bnDate,
-            khoa: row[2],
-            maHSBA: row[3] || '',
-            maBN: row[4] || '',
-            ten: row[5] || '',
-            ngaySinh: row[6] ? Utilities.formatDate(new Date(row[6]), 'GMT+7', 'yyyy-MM-dd') : '',
-            tuoi: row[7] || '',
-            gioi: row[8] || '',
-            danToc: row[9] || '',
-            quocTich: row[10] || '',
-            bhyt: row[11] || '',
-            tinh: row[12] || '',
-            huyen: row[13] || '',
-            xa: row[14] || '',
-            thon: row[15] || '',
-            lyDo: row[16] || '',
-            ngayTaiNan: formatDT(row[17]),
-            ngayVao: formatDT(row[18]),
-            ngayRa: formatDT(row[19]),
-            ketQua: row[20] || '',
-            tinhTrang: row[21] || '',
-            chuyenTu: row[22] || '',
-            noiPhatHien: row[23] || '',
-            chanDoan: row[24] || '',
-            icd: row[25] || '',
-            fileHSBAUrl: row[26] || '',
-            // New columns reading
-            loaiGiayTo: row[27] || '', 
-            soGiayTo: row[28] || '', 
-            ngayCap: row[29] ? Utilities.formatDate(new Date(row[29]), 'GMT+7', 'yyyy-MM-dd') : '', 
-            noiCap: row[30] || '',
-            htTinh: row[31] || '', 
-            htHuyen: row[32] || '', 
-            htXa: row[33] || '', 
-            htThon: row[34] || '',
-            phTinh: row[35] || '', 
-            phHuyen: row[36] || '', 
-            phXa: row[37] || '', 
-            phThon: row[38] || '',
-            chanDoanChiTiet: row[39] || ''
-          });
-        }
-      });
+      currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // === Bước 4: Tổng hợp chỉ số chuyên biệt ===
-    report.sdts = [];
-    Object.keys(departmentDates).forEach((key) => {
-      const parts = key.split("_");
-      const d = parts[1];
-      const deptData = departmentDates[key];
+    report.khoaDaNop = Object.keys(departmentDates).map(k => ({
+      ten: k,
+      days: departmentDates[k]
+    }));
 
-      report.chiSo.pt += deptData.pt;
-      report.chiSo.ptcc += deptData.ptcc;
-      report.chiSo.tre += deptData.tre;
-      report.chiSo.mo += deptData.mo;
-
-      if (deptData.sdt && !report.sdts.includes(deptData.sdt)) {
-        report.sdts.push(deptData.sdt);
-      }
-
-      // Máu chỉ cộng của các khoa trong ngày cuối cùng có dữ liệu thực tế
-      if (d === maxDateFound) {
-        report.chiSo.mau += deptData.mau;
-      }
-    });
+    // Bổ sung danh sách bệnh nhân chi tiết
+    report.benhNhan = getAggregatedPatients(startDate, endDate);
 
     return report;
   } catch (e) {
-    return { error: e.toString() };
+    throw new Error("Lỗi tổng hợp: " + e.toString());
   }
+}
+
+/**
+ * Lấy danh sách bệnh nhân từ tất cả các khoa trong khoảng ngày
+ */
+function getAggregatedPatients(startDate, endDate) {
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName("Data_BenhNhan");
+  if (!sheet || sheet.getLastRow() <= 1) return [];
+
+  const data = sheet.getDataRange().getValues();
+  
+  // Lấy danh sách (khoa, ngày) -> version mới nhất từ Data_ThongKe để map sang
+  const sheetTK = ss.getSheetByName("Data_ThongKe");
+  let latestVersions = {}; 
+  if (sheetTK && sheetTK.getLastRow() > 1) {
+     const tkData = sheetTK.getDataRange().getValues();
+     tkData.forEach((row, i) => {
+        if (i === 0 || row[22] === "Lịch sử") return;
+        const dStr = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
+        latestVersions[row[2] + "_" + dStr] = row[23];
+     });
+  }
+
+  return data.filter((row, idx) => {
+    if (idx === 0 || row[36] === "Lịch sử") return false;
+    const rowDate = Utilities.formatDate(new Date(row[1]), "GMT+7", "yyyy-MM-dd");
+    const key = row[2] + "_" + rowDate;
+    return rowDate >= startDate && rowDate <= endDate && row[37] === latestVersions[key];
+  }).map(bn => ({
+    khoa: bn[2], ten: bn[5], tuoi: bn[7], gioi: bn[8], lyDo: bn[22], ketQua: bn[29], chanDoan: bn[32], icd: bn[34], fileHSBAUrl: bn[35],
+    maHSBA: bn[3], maBN: bn[4], ngaySinh: bn[6], danToc: bn[9], quocTich: bn[10], loaiGiayTo: bn[11], soGiayTo: bn[12], ngayCap: bn[13],
+    noiCap: bn[14], bhyt: bn[15], tinh: bn[16], xa: bn[17], thon: bn[18],
+    htTinh: bn[19], htXa: bn[20], htThon: bn[21], phTinh: bn[23], phXa: bn[24], phThon: bn[25],
+    ngayTaiNan: bn[26], ngayVao: bn[27], ngayRa: bn[28], tinhTrang: bn[30],
+    chuyenTu: bn[31], chanDoanChiTiet: bn[33]
+  }));
 }
 
 // ======================================================================
@@ -670,7 +397,7 @@ function getAggregatedReportRange(startDate, endDate) {
  */
 function getReportStatus(startDate, endDate) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     const sheet = ss.getSheetByName("Data_ThongKe");
 
     // Danh sách TẤT CẢ các khoa cần theo dõi
@@ -691,7 +418,7 @@ function getReportStatus(startDate, endDate) {
       const data = sheet.getDataRange().getValues();
       for (let i = 1; i < data.length; i++) {
         const rowDate = Utilities.formatDate(new Date(data[i][1]), "GMT+7", "yyyy-MM-dd");
-        if (rowDate >= startDate && rowDate <= endDate) {
+        if (rowDate >= startDate && rowDate <= endDate && data[i][22] !== "Lịch sử") {
           const khoa = data[i][2];
           reportedMap[khoa + "_" + rowDate] = true;
         }
@@ -711,127 +438,54 @@ function getReportStatus(startDate, endDate) {
 
     return { dates: dates, departments: departments };
   } catch (e) {
-    return { error: e.toString() };
+    throw new Error("Lỗi lấy trạng thái: " + e.toString());
   }
 }
-
-// ======================================================================
-// PHẦN 5: TẠO SHEET BÁO CÁO VẬT LÝ
-// ======================================================================
 
 /**
  * Hàm làm mới sheet vật lý "Báo cáo tổng" theo khoảng thời gian
  */
 function refreshPhysicalSummarySheetRange(startDate, endDate) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   let sheetSummary =
     ss.getSheetByName("Báo cáo tổng") || ss.insertSheet("Báo cáo tổng");
   sheetSummary.clear();
 
-  const data = getAggregatedReportRange(startDate, endDate);
-  if (!data || !data.khoaDaNop || data.khoaDaNop.length === 0) return;
+  const report = getAggregatedReportRange(startDate, endDate);
+  const ROW_NAMES = getConfigDoiTuong();
 
-  const header1 = [
-    "TT", "Khám, cấp cứu", "BN cũ (1)", "Khám bệnh (2)", "",
-    "Vào viện (3)", "Chuyển viện (4)", "",
-    "Ra viện (5)", "", "Tử vong (6)", "",
-    "*BN hiện có tại thời điểm gửi báo cáo (7)", "",
-  ];
-  const header2 = [
-    "", "", "(1)", "Tổng số (2.1)", "Khám BHYT (2.2)",
-    "(3)", "Ngoại trú (4.1)", "Nội trú (4.2)",
-    "Tổng số (5.1)", "Tiên lượng tử vong xin về (5.2)",
-    "Tử vong nội viện (6.1)", "Tử vong ngoại viện (6.2)",
-    "Tổng số (7.1)", "Ca nặng, hoặc nguy kịch (7.2)",
+  let headerRows = [
+    ["BÁO CÁO TỔNG HỢP TOÀN VIỆN"],
+    ["Từ ngày: " + startDate + " - Đến ngày: " + endDate],
+    ["Khoa đã nộp: " + report.khoaDaNop.map(k => k.ten + " (" + k.days.length + " ngày)").join(", ")],
+    [""],
+    ["TT", "Khám, cấp cứu", "BN cũ (1)", "Khám bệnh - Tổng số (2.1)", "Khám bệnh - BHYT (2.2)", "Vào viện (3)", "Chuyển viện - Ngoại trú (4.1)", "Chuyển viện - Nội trú (4.2)", "Ra viện - Tổng số (5.1)", "Ra viện - Nặng xin về (5.2)", "Tử vong - Nội viện (6.1)", "Tử vong - Ngoại viện (6.2)", "BN hiện có - Tổng số (7.1)", "BN hiện có - Ca nặng (7.2)"]
   ];
 
-  sheetSummary
-    .getRange(1, 1, 1, 14)
-    .setValues([header1])
-    .setBackground("#cfe2f3")
-    .setFontWeight("bold");
-  sheetSummary
-    .getRange(2, 1, 1, 14)
-    .setValues([header2])
-    .setBackground("#cfe2f3")
-    .setFontWeight("bold");
+  let bodyRows = report.thongKe.map((row, idx) => {
+    return [idx + 1, row.doiTuong, ...row.vals];
+  });
 
-  const merges = [
-    [1, 1, 2, 1], [1, 2, 2, 1], [1, 4, 1, 2],
-    [1, 7, 1, 2], [1, 9, 1, 2], [1, 11, 1, 2], [1, 13, 1, 2],
+  let footerRows = [
+    [""],
+    ["CÁC CHỈ SỐ KHÁC"],
+    ["1. Số ca phẫu thuật (loại 3 trở lên):", report.chiSo.pt],
+    ["2. Trong đó, PT cấp cứu do tai nạn:", report.chiSo.ptcc],
+    ["3. TS trẻ sinh tại CSKCB:", report.chiSo.tre],
+    ["4. Trong đó, số trẻ sinh mổ đẻ:", report.chiSo.mo],
+    ["5. Tổng số lượng máu dự trữ (ml):", report.chiSo.mau]
   ];
-  merges.forEach((m) => sheetSummary.getRange(m[0], m[1], m[2], m[3]).merge());
 
-  let rows = [];
-  // data.thongKe[0] chính là hàng KHÁM CHỮA BỆNH CHUNG (tổng cộng)
-  const totalItem = data.thongKe[0];
+  const allRows = [...headerRows, ...bodyRows, ...footerRows];
+  sheetSummary.getRange(1, 1, allRows.length, allRows[0].length).setValues(allRows);
   
-  // Chỉ lặp qua các hàng chi tiết (bỏ qua hàng đầu tiên)
-  for (let i = 1; i < data.thongKe.length; i++) {
-    const item = data.thongKe[i];
-    let r = [i, item.doiTuong];
-    item.vals.forEach((v) => r.push(v));
-    rows.push(r);
-  }
-
-  // Thêm hàng TỔNG CỘNG ở cuối cùng lấy từ data.thongKe[0]
-  if (totalItem) {
-    rows.push(["Σ", "TỔNG CỘNG (KHÁM CHỮA BỆNH CHUNG)", ...totalItem.vals]);
-  }
-
-  sheetSummary
-    .getRange(3, 1, rows.length, 14)
-    .setValues(rows)
-    .setBorder(true, true, true, true, true, true);
-  
-  // Định dạng hàng tổng cộng cuối cùng
-  sheetSummary
-    .getRange(3 + rows.length - 1, 1, 1, 14)
-    .setFontWeight("bold")
-    .setBackground("#d9ead3") // Màu xanh lá nhạt phân biệt hàng tổng
-    .setFontColor("#274e13");
-
-  const startRow = 3 + rows.length + 2;
-  const subData = [
-    ["Chỉ tiêu", "Số lượng", "Ghi chú"],
-    ["Số ca phẫu thuật (loại 3 trở lên)", data.chiSo.pt, "Tổng trong khoảng"],
-    ["- Trong đó: Cấp cứu do tai nạn", data.chiSo.ptcc, ""],
-    ["Tổng trẻ sinh tại CSKCB", data.chiSo.tre, ""],
-    ["- Trong đó: Sinh mổ", data.chiSo.mo, ""],
-    ["Tổng lượng máu dự trữ tại BV (ml)", data.chiSo.mau, "Dữ liệu ngày cuối"],
-    ["Khoảng thời gian", startDate + " đến " + endDate, ""],
-    ["Khoa đã nộp", data.khoaDaNop.join(", "), ""],
-  ];
-  sheetSummary
-    .getRange(startRow, 1, subData.length, 3)
-    .setValues(subData)
-    .setBorder(true, true, true, true, true, true);
-  sheetSummary.setColumnWidth(2, 250);
-  sheetSummary
-    .getRange("A1:N50")
-    .setHorizontalAlignment("center")
-    .setVerticalAlignment("middle");
+  // Định dạng
+  sheetSummary.getRange("A1").setFontSize(14).setFontWeight("bold");
+  sheetSummary.getRange(5, 1, 1, 14).setFontWeight("bold").setBackground("#f3f3f3");
 }
 
-/**
- * HÀM CHECK QUYỀN DRIVE (Chạy thủ công để cấp quyền)
- */
-function checkDrivePermissions() {
-  const folderName = 'Báo cáo tết';
-  try {
-    const folders = DriveApp.getFoldersByName(folderName);
-    if (folders.hasNext()) {
-      Logger.log('OK: Tìm thấy folder ' + folderName);
-    } else {
-      DriveApp.createFolder(folderName);
-      Logger.log('OK: Đã tạo folder ' + folderName);
-    }
-    return "Kết nối Drive thành công! Vui lòng thử lại báo cáo.";
-  } catch (e) {
-    Logger.log('Lỗi: ' + e.toString());
-    return "Lỗi quyền Drive: " + e.toString();
-  }
-}
+// ======================================================================
+// PHẦN 5: API ROUTER (POST REQUEST)
 // ======================================================================
 
 /**
