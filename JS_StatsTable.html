@@ -1,0 +1,86 @@
+<script>
+    /**
+     * LOGIC TÍNH TOÁN VÀ HIỂN THỊ BẢNG SỐ LIỆU
+     * Đọc cấu hình từ window.APP_CONFIG
+     */
+    const CFG = window.APP_CONFIG || {};
+    const ROW_NAMES = (CFG.doiTuong || []).map(function(dt) { return dt.ten; });
+    const COL_CODES = (CFG.bangThongKe || {}).colCodes || [1, 21, 22, 3, 41, 42, 51, 52, 61, 62];
+
+    /** Khởi tạo bảng thống kê từ config */
+    function initStatsTable() {
+        const body = document.getElementById('statsTableBody');
+        if (!body) return;
+        body.innerHTML = '';
+
+        const doiTuongList = CFG.doiTuong || [];
+        doiTuongList.forEach(function(dt, idx) {
+            const isTotalRow = dt.laDongTong;
+            const bgClass = isTotalRow ? "bg-slate-100 font-black text-red-700 uppercase" : "font-bold text-blue-900";
+            const inputDisabled = isTotalRow ? "readonly tabindex='-1'" : "";
+            const inputClass = isTotalRow ? "bg-slate-100 text-red-700 font-bold" : "";
+            const bg71Class = isTotalRow ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900";
+            const clickAction = isTotalRow ? `onclick="alert('Hàng này hệ thống sẽ tự động tính tổng từ các hàng chi tiết bên dưới.\\n\\nVui lòng nhập liệu vào các hàng [1], [2], [3]...')" ` : "";
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="sticky-col-1 border p-1 text-center font-bold text-slate-400">${isTotalRow ? '-' : dt.stt}</td>
+                <td class="sticky-col-2 border p-2 text-left ${bgClass}">${dt.ten} ${isTotalRow ? '<br><span class="text-[10px] text-slate-500 font-normal italic normal-case">(Hệ thống tự tính, không nhập)</span>' : ''}</td>
+                ${COL_CODES.map(function(c) { return '<td class="p-0 border"><input type="number" class="table-input c' + c + ' row-' + idx + ' ' + inputClass + '" onchange="' + (isTotalRow ? '' : 'calc71(' + idx + '); calcTotals()') + '" value="0" ' + inputDisabled + ' ' + clickAction + '></td>'; }).join('')}
+                <td class="p-1 border ${bg71Class} font-black res-71 text-[13px]" ${clickAction}>0</td>
+                <td class="p-0 border ${bg71Class}"><input type="number" class="table-input c72 row-${idx} ${isTotalRow ? 'bg-red-50 text-red-800 font-bold' : ''}" onchange="${isTotalRow ? '' : 'calcTotals()'}" value="0" ${inputDisabled} ${clickAction}></td>
+            `;
+            body.appendChild(tr);
+        });
+    }
+
+    /** Tính cột 7.1 cho 1 dòng (BN hiện có thực tế) */
+    function calc71(r) {
+        const doiTuongList = CFG.doiTuong || [];
+        if (doiTuongList[r] && doiTuongList[r].laDongTong) return; 
+        const c1 = parseFloat(document.querySelector('.c1.row-' + r)?.value) || 0;
+        const c3 = parseFloat(document.querySelector('.c3.row-' + r)?.value) || 0;
+        const c42 = parseFloat(document.querySelector('.c42.row-' + r)?.value) || 0;
+        const c51 = parseFloat(document.querySelector('.c51.row-' + r)?.value) || 0;
+        const c61 = parseFloat(document.querySelector('.c61.row-' + r)?.value) || 0;
+        const c62 = parseFloat(document.querySelector('.c62.row-' + r)?.value) || 0;
+        const res71 = document.querySelectorAll('.res-71')[r];
+        if (res71) res71.innerText = c1 + c3 - c42 - c51 - c61 - c62;
+    }
+
+    /** Tính hàng TỔNG CỘNG */
+    function calcTotals() {
+        if (ROW_NAMES.length === 0) return;
+        const doiTuongList = CFG.doiTuong || [];
+        const totalIdx = doiTuongList.findIndex(function(dt) { return dt.laDongTong; });
+        if (totalIdx === -1) return;
+        
+        COL_CODES.forEach(function(c) {
+            let sum = 0;
+            for (let r = 0; r < doiTuongList.length; r++) {
+                if (doiTuongList[r].laDongTong) continue;
+                sum += parseFloat(document.querySelector('.c' + c + '.row-' + r)?.value) || 0;
+            }
+            const totalInput = document.querySelector('.c' + c + '.row-' + totalIdx);
+            if (totalInput) totalInput.value = sum;
+        });
+        
+        // Tổng 7.1
+        let sum71 = 0;
+        const res71Nodes = document.querySelectorAll('.res-71');
+        for (let r = 0; r < doiTuongList.length; r++) {
+            if (doiTuongList[r].laDongTong) continue;
+            sum71 += parseFloat(res71Nodes[r]?.innerText) || 0;
+        }
+        if (res71Nodes[totalIdx]) res71Nodes[totalIdx].innerText = sum71;
+        
+        // Tổng 7.2
+        let sum72 = 0;
+        for (let r = 0; r < doiTuongList.length; r++) {
+            if (doiTuongList[r].laDongTong) continue;
+            sum72 += parseFloat(document.querySelector('.c72.row-' + r)?.value) || 0;
+        }
+        const total72Input = document.querySelector('.c72.row-' + totalIdx);
+        if (total72Input) total72Input.value = sum72;
+    }
+</script>

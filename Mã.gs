@@ -1,5 +1,5 @@
 /**
- * Backend Google Apps Script - Tết Bính Ngọ 2026
+ * Backend Google Apps Script - Lễ 30/4-1/5
  * Cập nhật đầy đủ các hàm để khớp với Frontend.
  */
 
@@ -21,6 +21,54 @@ function doGet(e) {
     .setTitle("Báo cáo Tết 2026 - Bệnh viện Bình Định")
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag("viewport", "width=device-width, initial-scale=1");
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+
+
+// ======================================================================
+// HÀM HELPER ĐỌC CONFIG TỪ SHEET
+// ======================================================================
+
+/**
+ * Đọc danh sách đối tượng thống kê từ sheet Config_DoiTuong
+ * Trả về mảng tên đối tượng (không bao gồm dòng tổng)
+ */
+function getConfigDoiTuong() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Config_DoiTuong');
+  if (!sheet || sheet.getLastRow() < 2) {
+    return ["KHÁM CHỬa BỆNH CHUNG", "Tai nạn giao thông", "COVID-19", "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"];
+  }
+  var data = sheet.getDataRange().getValues();
+  var result = [];
+  for (var i = 1; i < data.length; i++) {
+    var ten = String(data[i][1] || '').trim();
+    if (ten) result.push(ten);
+  }
+  return result.length > 0 ? result : ["KHÁM CHỬa BỆNH CHUNG", "Tai nạn giao thông", "COVID-19", "Các đối tượng người bệnh khác"];
+}
+
+/**
+ * Đọc danh sách tất cả khoa phòng từ sheet Config_KhoaPhong
+ * Trả về mảng tên khoa
+ */
+function getConfigKhoaPhong() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Config_KhoaPhong');
+  if (!sheet || sheet.getLastRow() < 2) {
+    return ["Nội tổng hợp", "Ngoại tổng hợp", "Phụ Sản", "Nhi", "Liên chuyên khoa", "Khám bệnh", "Phòng cấp cứu", "Hồi sức Cấp cứu"];
+  }
+  var data = sheet.getDataRange().getValues();
+  var result = [];
+  for (var i = 1; i < data.length; i++) {
+    var ten = String(data[i][1] || '').trim();
+    if (ten) result.push(ten);
+  }
+  return result.length > 0 ? result : ["Nội tổng hợp", "Ngoại tổng hợp", "Phụ Sản", "Nhi", "Liên chuyên khoa", "Khám bệnh", "Phòng cấp cứu", "Hồi sức Cấp cứu"];
 }
 
 // ======================================================================
@@ -429,12 +477,7 @@ function getAggregatedReportRange(startDate, endDate) {
       return ts === latestTsTK[key];
     });
 
-    const ROW_NAMES = [
-      "KHÁM CHỮA BỆNH CHUNG",
-      "Tai nạn giao thông",
-      "COVID-19",
-      "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"
-    ];
+    const ROW_NAMES = getConfigDoiTuong();
     let report = {
       thongKe: ROW_NAMES.map((name) => ({
         doiTuong: name,
@@ -631,11 +674,7 @@ function getReportStatus(startDate, endDate) {
     const sheet = ss.getSheetByName("Data_ThongKe");
 
     // Danh sách TẤT CẢ các khoa cần theo dõi
-    const ALL_DEPARTMENTS = [
-      "Nội tổng hợp", "Ngoại tổng hợp",
-      "Phụ Sản", "Nhi", "Liên chuyên khoa",
-      "Khám bệnh", "Phòng cấp cứu", "Hồi sức Cấp cứu"
-    ];
+    const ALL_DEPARTMENTS = getConfigKhoaPhong();
 
     // Tạo danh sách ngày trong dải
     let dates = [];

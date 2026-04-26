@@ -1,0 +1,46 @@
+<style>
+    /* stylelint-disable */
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; appearance: textfield; font-size: 15px; }
+    .table-container { width: 100%; display: block; overflow-x: auto; position: relative; -webkit-overflow-scrolling: touch; border: 1px solid #e2e8f0; border-radius: 0.5rem; background-color: white; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+    
+    .sticky-col-1 { position: sticky; left: 0; z-index: 30; background-color: white !important; border-right: 1px solid #e2e8f0; width: 35px; }
+    .sticky-col-2 { position: sticky; left: 35px; z-index: 30; background-color: white !important; border-right: 2px solid #cbd5e1; min-width: 120px; max-width: 150px; white-space: normal; }
+    
+    thead th { border: 1px solid #cbd5e1; padding: 0.25rem; text-align: center; font-weight: 700; color: #334155; background-color: #f8fafc; line-height: 1.2; font-size: 10px; }
+    .table-input { width: 100%; border: none; text-align: center; padding: 0.5rem; background-color: transparent; outline: none; min-width: 30px; font-size: 14px; }
+    .table-input:focus { box-shadow: none; }
+    .tab-active { border-bottom: 4px solid #2563eb; color: #1d4ed8; font-weight: 900; }
+    .section-hidden { display: none; }
+    .col-num { min-width: 40px; max-width: 60px; }
+    
+    .total-row { background-color: #f1f5f9; font-weight: 900; color: #1e3a5f; }
+    .current-exist-col { background-color: #fffbeb; color: #78350f; }
+
+    /* Dòng bấm được trong bảng báo cáo tổng */
+    .clickable-row { cursor: pointer; transition: background-color 0.15s; }
+    .clickable-row:hover { background-color: #eff6ff !important; }
+
+    /* Modal read-only info item */
+    .info-item { display: flex; flex-direction: column; gap: 1px; }
+    .info-item .info-label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+    .info-item .info-value { font-size: 12px; font-weight: 600; color: #1e293b; min-height: 18px; }
+
+    /* Patient Detail Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .modal-container { background: #fff; border-radius: 16px; width: 100%; max-width: 900px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+    .modal-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #fff; z-index: 10; border-radius: 16px 16px 0 0; }
+    .modal-header h3 { font-size: 15px; font-weight: 800; color: #1e3a5f; }
+    .modal-body { padding: 20px; }
+    .modal-footer { padding: 12px 20px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0; background: #fff; border-radius: 0 0 16px 16px; }
+    .modal-section-title { font-size: 13px; font-weight: 700; color: #02456c; border-bottom: 1px solid rgba(128,128,128,0.29); padding-bottom: 6px; margin-bottom: 12px; margin-top: 16px; }
+    .modal-section-title:first-child { margin-top: 0; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+    .form-group { display: flex; flex-direction: column; gap: 2px; }
+    .form-group label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+    .form-group label .required { color: #ef4444; margin-left: 2px; }
+    .form-group input, .form-group select, .form-group textarea { padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; transition: border-color 0.2s; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+    .form-group.full-width { grid-column: 1 / -1; }
+    .form-group.half-width { grid-column: span 2; }
+</style>

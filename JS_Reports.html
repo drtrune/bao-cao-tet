@@ -1,0 +1,134 @@
+<script>
+    /**
+     * XỬ LÝ TỔNG HỢP BÁO CÁO VÀ THEO DÕI TRẠNG THÁI
+     */
+
+    /** Lấy dữ liệu tổng hợp toàn viện */
+    async function fetchTotalReport() {
+        const start = document.getElementById('dateStartReport').value;
+        const end = document.getElementById('dateEndReport').value;
+        const container = document.getElementById('reportContent');
+        if (!start || !end) return;
+        container.innerHTML = '<div class="text-center py-20 text-blue-600"><i class="fas fa-spinner fa-spin fa-2x mb-4"></i><p>Đang tổng hợp số liệu toàn viện...</p></div>';
+        
+        try {
+            const data = await callBackend('getAggregatedReportRange', { startDate: start, endDate: end });
+            if (!data || data.error || !data.khoaDaNop || data.khoaDaNop.length === 0) {
+                container.innerHTML = `<div class="text-center py-20 text-slate-400 italic">${data?.error ? 'Lỗi: ' + data.error : 'Không có dữ liệu trong khoảng này.'}</div>`;
+                return;
+            }
+            document.getElementById('khoasSummary').innerText = "Khoa đã nộp: " + data.khoaDaNop.join(", ");
+            renderTotalReportTable(data, start, end);
+        } catch (err) {
+            container.innerHTML = `<div class="text-center py-20 text-red-500 font-bold">Lỗi kết nối: ${err.message}</div>`;
+        }
+    }
+
+    /** Vẽ bảng báo cáo tổng hợp */
+    function renderTotalReportTable(data, start, end) {
+        const container = document.getElementById('reportContent');
+        let grandTotals = data.thongKe[0]?.vals || Array(12).fill(0);
+        let html = `<div class="table-container"><table class="min-w-[1050px] text-center text-[11px] border-collapse">
+            <thead>
+                <tr>
+                    <th rowspan="2" class="sticky-col-1">TT</th>
+                    <th rowspan="2" class="sticky-col-2">Khám, cấp cứu</th>
+                    <th rowspan="2" class="col-num">BN cũ (1)</th>
+                    <th colspan="2">Khám bệnh (2)</th>
+                    <th rowspan="2" class="col-num">Vào viện (3)</th>
+                    <th colspan="2">Chuyển viện (4)</th>
+                    <th colspan="2">Ra viện (5)</th>
+                    <th colspan="2">Tử vong (6)</th>
+                    <th colspan="2" class="bg-amber-100 italic">*BN hiện có (7)</th>
+                </tr>
+                <tr>
+                    <th class="col-num">Tổng số (2.1)</th><th class="col-num">BHYT (2.2)</th>
+                    <th class="col-num">Ngoại trú (4.1)</th><th class="col-num">Nội trú (4.2)</th>
+                    <th class="col-num">Tổng (5.1)</th><th class="col-num">Xin về (5.2)</th>
+                    <th class="col-num">Nội viện (6.1)</th><th class="col-num">Ngoại viện (6.2)</th>
+                    <th class="col-num bg-amber-100">Tổng (7.1)</th><th class="col-num bg-amber-100">Nặng (7.2)</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-x">`;
+        
+        data.thongKe.forEach((row, i) => {
+            if (i === 0) return; 
+            html += `<tr class="${i%2===0?'bg-white':'bg-slate-50'} font-bold">
+                <td class="sticky-col-1 border border-slate-200">${i}</td>
+                <td class="sticky-col-2 border border-slate-200 text-left p-2 text-blue-800">${row.doiTuong}</td>
+                ${row.vals.map((v, idx) => `<td class="border border-slate-200 ${idx>=10?'bg-amber-50 text-amber-900':''}">${v}</td>`).join('')}
+            </tr>`;
+        });
+        
+        html += `<tr class="bg-blue-100 font-black text-blue-900 border-t-2 border-blue-300">
+            <td class="sticky-col-1 bg-blue-100">Σ</td>
+            <td class="sticky-col-2 text-left p-2 uppercase bg-blue-100">TỔNG CỘNG</td>
+            ${grandTotals.map((v, idx) => `<td class="border-y border-blue-200 ${idx>=10?'bg-amber-100 text-red-700':''}">${v}</td>`).join('')}
+        </tr></tbody></table></div>`;
+
+        // Các chỉ số phụ
+        html += `<div class="mt-8 overflow-hidden rounded-xl border border-slate-200"><table class="min-w-full text-xs border-collapse"><thead class="bg-slate-50"><tr><th class="text-left p-3 border">Chỉ tiêu</th><th class="w-32 text-center p-3 border">Số lượng</th><th class="p-3 border">Ghi chú</th></tr></thead><tbody class="divide-y bg-white">`;
+        html += `<tr><td class="p-2 border font-bold uppercase">Số ca phẫu thuật (loại 3 trở lên)</td><td class="text-center font-black text-lg p-2 border">${data.chiSo.pt}</td><td class="p-2 border italic text-slate-400">Tổng từ ${start} đến ${end}</td></tr>`;
+        html += `<tr><td class="p-2 border pl-6">- Trong đó: Cấp cứu do tai nạn</td><td class="text-center font-bold p-2 border text-orange-700">${data.chiSo.ptcc}</td><td class="p-2 border"></td></tr>`;
+        html += `<tr><td class="p-2 border font-bold uppercase">Tổng trẻ sinh</td><td class="text-center font-black text-lg p-2 border text-pink-700">${data.chiSo.tre}</td><td class="p-2 border"></td></tr>`;
+        html += `<tr><td class="p-2 border pl-6">- Trong đó: Sinh mổ</td><td class="text-center font-bold p-2 border">${data.chiSo.mo}</td><td class="p-2 border"></td></tr>`;
+        html += `<tr><td class="p-2 border font-bold uppercase">Tổng máu dự trữ (ml)</td><td class="text-center font-black text-lg p-2 border text-red-600">${data.chiSo.mau}</td><td class="p-2 border">Ngày cuối: ${end}</td></tr></tbody></table></div>`;
+
+        // Danh sách bệnh nhân
+        if (data.benhNhan?.length > 0) {
+            window._reportBenhNhan = data.benhNhan;
+            html += `<div class="mt-8"><h3 class="text-xs font-black text-red-800 uppercase mb-3">Danh sách ca bệnh (${data.benhNhan.length} ca)</h3><div class="table-container overflow-x-auto"><table class="min-w-[700px] text-[10px] border-collapse"><thead class="bg-red-50 text-red-900 uppercase"><tr><th class="p-2 border w-10">STT</th><th class="p-2 border">Khoa</th><th class="p-2 border">Mã HSBA</th><th class="p-2 border">Họ tên</th><th class="p-2 border">Tuổi</th><th class="p-2 border">Giới</th><th class="p-2 border">Lý do</th><th class="p-2 border">Kết quả</th><th class="p-2 border">Chẩn đoán</th></tr></thead><tbody class="bg-white">`;
+            data.benhNhan.forEach((bn, i) => {
+                html += `<tr class="${i%2===0?'bg-white':'bg-slate-50'} clickable-row" onclick="openReportPatientModal(${i})"><td class="p-2 border text-center font-bold text-slate-400">${i+1}</td><td class="p-2 border font-bold">${bn.khoa}</td><td class="p-2 border font-bold text-emerald-700">${bn.maHSBA}</td><td class="p-2 border font-bold text-blue-800">${bn.ten}</td><td class="p-2 border text-center">${bn.tuoi}</td><td class="p-2 border text-center">${bn.gioi}</td><td class="p-2 border text-blue-700">${LY_DO_LABELS[bn.lyDo] || bn.lyDo}</td><td class="p-2 border text-red-700">${KET_QUA_LABELS[bn.ketQua] || bn.ketQua}</td><td class="p-2 border">${bn.chanDoan}</td></tr>`;
+            });
+            html += '</tbody></table></div></div>';
+        }
+
+        container.innerHTML = html;
+    }
+
+    /** Kiểm tra trạng thái báo cáo của các khoa */
+    async function fetchTrackingStatus() {
+        const start = document.getElementById('trackingStart').value;
+        const end = document.getElementById('trackingEnd').value;
+        const container = document.getElementById('trackingContent');
+        if (!start || !end) return;
+        container.innerHTML = '<div class="text-center py-10 text-emerald-600"><i class="fas fa-spinner fa-spin fa-2x mb-4"></i><p>Đang kiểm tra...</p></div>';
+
+        try {
+            const data = await callBackend('getReportStatus', { startDate: start, endDate: end });
+            if (!data || data.error || !data.dates) {
+                container.innerHTML = `<div class="text-center py-10 text-red-500">Lỗi: ${data?.error || 'Không có dữ liệu'}</div>`;
+                return;
+            }
+            renderTrackingTable(data);
+        } catch (err) {
+            container.innerHTML = `<div class="text-center py-10 text-red-500">Lỗi: ${err.message}</div>`;
+        }
+    }
+
+    /** Vẽ bảng ma trận theo dõi */
+    function renderTrackingTable(data) {
+        const container = document.getElementById('trackingContent');
+        let totalReported = 0;
+        data.departments.forEach(d => { totalReported += d.reported.length; });
+        const totalCells = data.departments.length * data.dates.length;
+
+        let html = `<div class="mb-4 text-sm font-bold text-slate-600">Tổng: <span class="text-emerald-700">${totalReported}</span> / ${totalCells} báo cáo (${Math.round(totalReported/totalCells*100)}%)</div>`;
+        html += '<div class="table-container"><table class="min-w-full text-[10px] border-collapse"><thead><tr class="bg-emerald-600 text-white"><th class="p-2 border sticky left-0 z-10 bg-emerald-600 min-w-[140px]">Khoa</th>';
+        data.dates.forEach(d => { html += `<th class="p-2 border min-w-[70px]">${d.split('-')[2]}/${d.split('-')[1]}</th>`; });
+        html += '</tr></thead><tbody>';
+
+        data.departments.forEach((dept, i) => {
+            const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-slate-50';
+            html += `<tr class="${rowBg}"><td class="p-2 border font-bold text-left sticky left-0 z-10 ${rowBg}">${dept.khoa}</td>`;
+            data.dates.forEach(d => {
+                const done = dept.reported.includes(d);
+                html += done ? '<td class="p-2 border text-center bg-emerald-100">✅</td>' : '<td class="p-2 border text-center bg-red-50">❌</td>';
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    }
+</script>

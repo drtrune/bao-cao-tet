@@ -1,0 +1,188 @@
+<script>
+    /**
+     * XỬ LÝ ĐIỀU HƯỚNG VÀ HIỂN THỊ UI
+     * Đọc cấu hình khoa phòng từ window.APP_CONFIG
+     */
+
+    /** Chuyển đổi giữa 3 tab chính */
+    function switchTab(tab) {
+        const tabs = ['input', 'report', 'tracking'];
+        const views = { input: 'viewInput', report: 'viewReport', tracking: 'viewTracking' };
+        const buttons = { input: 'tabInput', report: 'tabReport', tracking: 'tabTracking' };
+
+        tabs.forEach(function(t) {
+            document.getElementById(views[t]).classList.toggle('section-hidden', t !== tab);
+            document.getElementById(buttons[t]).classList.toggle('tab-active', t === tab);
+            document.getElementById(buttons[t]).classList.toggle('text-slate-400', t !== tab);
+        });
+
+        if (tab === 'report') {
+            const dateVal = document.getElementById('ngayTruc').value;
+            document.getElementById('dateStartReport').value = dateVal;
+            document.getElementById('dateEndReport').value = dateVal;
+            fetchTotalReport();
+        }
+        if (tab === 'tracking') {
+            const dateVal = document.getElementById('ngayTruc').value;
+            document.getElementById('trackingStart').value = dateVal;
+            document.getElementById('trackingEnd').value = dateVal;
+            fetchTrackingStatus();
+        }
+    }
+
+    /** Tìm config của khoa theo tên */
+    function findKhoaConfig(tenKhoa) {
+        const khoaList = (window.APP_CONFIG || {}).khoaPhong || [];
+        return khoaList.find(function(k) { return k.ten === tenKhoa; }) || null;
+    }
+
+    /** Ẩn/hiện các section dựa trên config khoa */
+    function toggleSections() {
+        const tenKhoa = document.getElementById('khoaBaoCao').value;
+        const khoaCfg = findKhoaConfig(tenKhoa);
+
+        // Danh sách tất cả sections có thể có
+        const allPossibleSections = new Set();
+        ((window.APP_CONFIG || {}).khoaPhong || []).forEach(function(k) {
+            (k.sections || []).forEach(function(s) { allPossibleSections.add(s); });
+        });
+        // Thêm các section chỉ số
+        ((window.APP_CONFIG || {}).chiSoKhac || []).forEach(function(cs) {
+            if (cs.section) allPossibleSections.add(cs.section);
+        });
+
+        // Ẩn tất cả
+        allPossibleSections.forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('section-hidden');
+        });
+
+        // Hiện các section theo config khoa
+        if (khoaCfg) {
+            (khoaCfg.sections || []).forEach(function(sectionId) {
+                const el = document.getElementById(sectionId);
+                if (el) el.classList.remove('section-hidden');
+            });
+        }
+
+        updateInputState(tenKhoa);
+    }
+
+    /** Cập nhật trạng thái cho phép nhập liệu dựa trên config khoa */
+    function updateInputState(tenKhoa) {
+        const khoaCfg = findKhoaConfig(tenKhoa);
+        const disableCodes = khoaCfg ? (khoaCfg.disableCols || []) : [];
+        const getIdx = function(code) { return COL_CODES.indexOf(code); };
+        const rows = document.querySelectorAll('#statsTableBody tr');
+
+        rows.forEach(function(tr) {
+            if (tr.classList.contains('total-row')) return;
+            const inputs = tr.querySelectorAll('input');
+
+            // Mặc định enable hết
+            inputs.forEach(function(inp) {
+                inp.disabled = false;
+                inp.classList.remove('bg-gray-100', 'text-gray-400');
+            });
+
+            // Disable các cột theo config
+            disableCodes.forEach(function(c) {
+                if (c === 72) {
+                    // Cột 7.2 nằm ở index cuối
+                    const idx72 = COL_CODES.length;
+                    if (inputs[idx72]) {
+                        inputs[idx72].disabled = true;
+                        inputs[idx72].classList.add('bg-gray-100', 'text-gray-400');
+                        inputs[idx72].value = 0;
+                    }
+                } else {
+                    const i = getIdx(c);
+                    if (i !== -1 && inputs[i]) {
+                        inputs[i].disabled = true;
+                        inputs[i].classList.add('bg-gray-100', 'text-gray-400');
+                        inputs[i].value = 0;
+                    }
+                }
+            });
+        });
+    }
+
+    /** Mở khóa chỉnh sửa ngày báo cáo */
+    function toggleDateLock() {
+        const input = document.getElementById('ngayTruc');
+        const icon = document.getElementById('dateLockIcon');
+        const appCfg = (window.APP_CONFIG || {}).app || {};
+        const password = appCfg.DATE_LOCK_PASSWORD || 'cotec@123';
+
+        if (input.disabled) {
+            const pass = prompt("🔒 Nhập mật khẩu để mở khóa ngày:");
+            if (pass === password) {
+                input.disabled = false;
+                input.classList.remove('bg-slate-50');
+                icon.className = "fas fa-lock-open text-green-600";
+            } else if (pass !== null) {
+                alert("❌ Mật khẩu không đúng!");
+            }
+        } else {
+            input.disabled = true;
+            input.classList.add('bg-slate-50');
+            icon.className = "fas fa-lock text-slate-600";
+        }
+    }
+
+    /** Render danh sách khoa vào dropdown */
+    function renderKhoaDropdown() {
+        const select = document.getElementById('khoaBaoCao');
+        if (!select) return;
+        const khoaList = (window.APP_CONFIG || {}).khoaPhong || [];
+        // Giữ option đầu tiên "-- Chọn khoa --"
+        select.innerHTML = '<option value="">-- Chọn khoa --</option>';
+        khoaList.forEach(function(k) {
+            const opt = document.createElement('option');
+            opt.value = k.ten;
+            opt.textContent = k.ten;
+            select.appendChild(opt);
+        });
+    }
+
+    /** Render các section chỉ số từ config */
+    function renderChiSoSections() {
+        const container = document.getElementById('chiSoContainer');
+        if (!container) return;
+        const chiSoList = (window.APP_CONFIG || {}).chiSoKhac || [];
+
+        // Nhóm theo section
+        const sectionMap = {};
+        chiSoList.forEach(function(cs) {
+            if (!sectionMap[cs.section]) sectionMap[cs.section] = [];
+            sectionMap[cs.section].push(cs);
+        });
+
+        const colorMap = {
+            'orange': { bg: 'bg-orange-50/50', border: 'border-orange-200', text: 'text-orange-900' },
+            'pink': { bg: 'bg-pink-50/50', border: 'border-pink-200', text: 'text-pink-900' },
+            'red': { bg: 'bg-red-50/50', border: 'border-red-200', text: 'text-red-900' }
+        };
+
+        container.innerHTML = '';
+        Object.keys(sectionMap).forEach(function(sectionId) {
+            const items = sectionMap[sectionId];
+            const color = colorMap[items[0].mauNen] || colorMap['orange'];
+            const icon = items[0].icon || 'fa-chart-bar';
+
+            let html = '<div id="' + sectionId + '" class="section-hidden mb-6">';
+            html += '<div class="p-4 border rounded-2xl ' + color.bg + ' ' + color.border + '">';
+            html += '<h3 class="font-bold ' + color.text + ' mb-3 uppercase text-xs flex items-center"><i class="fas ' + icon + ' mr-2"></i>Chỉ số ' + items[0].ten.split('(')[0] + '</h3>';
+            html += '<div class="grid grid-cols-2 gap-4">';
+            items.forEach(function(cs, i) {
+                const stt = chiSoList.indexOf(cs) + 6; // Bắt đầu từ 6
+                html += '<div>';
+                html += '<label class="text-[10px] font-bold text-slate-600 uppercase">' + stt + '. ' + cs.ten + '</label>';
+                html += '<input type="number" id="' + cs.inputId + '" class="w-full mt-1 p-2 border rounded font-bold text-center text-lg" value="0">';
+                html += '</div>';
+            });
+            html += '</div></div></div>';
+            container.innerHTML += html;
+        });
+    }
+</script>

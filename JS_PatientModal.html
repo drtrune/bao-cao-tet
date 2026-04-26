@@ -1,0 +1,333 @@
+<script>
+    /**
+     * LOGIC XỬ LÝ DANH SÁCH BỆNH NHÂN VÀ MODAL CHI TIẾT
+     */
+    let patientDataList = [];
+    let _fileUrlToDeleteInModal = null;
+    let _isReportViewMode = false;
+
+    const LY_DO_LABELS = buildShortLabels('LY_DO');
+    const KET_QUA_LABELS = buildShortLabels('KET_QUA');
+
+    /** Build bảng nhãn ngắn từ danh mục config */
+    function buildShortLabels(nhom) {
+        const danhMuc = ((window.APP_CONFIG || {}).danhMuc || {})[nhom] || {};
+        const result = {};
+        Object.keys(danhMuc).forEach(function(ma) {
+            result[ma] = danhMuc[ma].short || danhMuc[ma].label || ma;
+        });
+        return result;
+    }
+
+    /** Vẽ lại bảng tóm tắt bệnh nhân */
+    function renderPatientTable() {
+        const body = document.getElementById('patientListBody');
+        if (!body) return;
+        body.innerHTML = '';
+        patientDataList.forEach((bn, idx) => {
+            const tr = document.createElement('tr');
+            tr.className = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50';
+            tr.innerHTML = `
+                <td class="p-2 border text-center font-bold text-slate-400">${idx + 1}</td>
+                <td class="p-2 border font-bold text-emerald-700 text-[10px]">${bn.maHSBA || ''}</td>
+                <td class="p-2 border font-bold text-blue-800">${bn.ten || ''}</td>
+                <td class="p-2 border text-center">${bn.tuoi || ''}</td>
+                <td class="p-2 border text-center">${bn.gioi || ''}</td>
+                <td class="p-2 border font-bold text-blue-700 text-[10px]">${LY_DO_LABELS[bn.lyDo] || bn.lyDo || ''}</td>
+                <td class="p-2 border font-bold text-red-700 text-[10px]">${KET_QUA_LABELS[bn.ketQua] || bn.ketQua || ''}</td>
+                <td class="p-2 border text-[10px]">${bn.chanDoan || ''} ${bn.icd ? '(' + bn.icd + ')' : ''}</td>
+                <td class="p-1 border text-center">
+                    <button onclick="openPatientModal(${idx})" class="text-blue-500 hover:text-blue-700 mr-1" title="Sửa"><i class="fas fa-edit"></i></button>
+                    <button onclick="removePatient(${idx})" class="text-red-500 hover:text-red-700" title="Xóa"><i class="fas fa-trash-alt"></i></button>
+                </td>`;
+            body.appendChild(tr);
+        });
+    }
+
+    /** Mở modal thêm mới hoặc chỉnh sửa bệnh nhân */
+    async function openPatientModal(editIndex) {
+        _fileUrlToDeleteInModal = null;
+        document.getElementById('bnEditIndex').value = editIndex;
+        const isNew = editIndex < 0;
+        document.getElementById('patientModalTitle').innerHTML = isNew
+            ? '<i class="fas fa-user-plus mr-2 text-green-600"></i>Thêm mới bệnh nhân'
+            : '<i class="fas fa-user-edit mr-2 text-blue-600"></i>Chỉnh sửa bệnh nhân';
+
+        // Reset fields
+        const fieldIds = ['bnMaHSBA','bnMaBN','bnHoTen','bnNgaySinh','bnTuoi','bnGioiTinh','bnDanToc','bnQuocTich','bnBHYT',
+                          'bnLoaiGiayTo','bnSoGiayTo','bnNgayCap','bnNoiCap','bnTinh','bnXa','bnThon',
+                          'bnHTTinh','bnHTXa','bnHTThon','bnLyDo','bnPHTinh','bnPHXa','bnPHThon',
+                          'bnNgayTaiNan','bnNgayVao','bnNgayRa','bnKetQua','bnTinhTrang','bnChuyenTu','bnChanDoan'];
+        fieldIds.forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+        document.getElementById('diagnosisTableBody').innerHTML = ''; 
+        
+        // Defaults
+        document.getElementById('bnGioiTinh').value = 'Nam';
+        document.getElementById('bnDanToc').value = 'Kinh';
+        document.getElementById('bnQuocTich').value = 'Việt Nam';
+        document.getElementById('bnLyDo').value = '1';
+        document.getElementById('bnKetQua').value = '1';
+        document.getElementById('bnFileHSBA').value = '';
+
+        if (!isNew && patientDataList[editIndex]) {
+            const bn = patientDataList[editIndex];
+            document.getElementById('bnMaHSBA').value = bn.maHSBA || '';
+            document.getElementById('bnMaBN').value = bn.maBN || '';
+            document.getElementById('bnHoTen').value = bn.ten || '';
+            document.getElementById('bnNgaySinh').value = bn.ngaySinh || '';
+            document.getElementById('bnTuoi').value = bn.tuoi || '';
+            document.getElementById('bnGioiTinh').value = bn.gioi || 'Nam';
+            document.getElementById('bnDanToc').value = bn.danToc || 'Kinh';
+            document.getElementById('bnQuocTich').value = bn.quocTich || 'Việt Nam';
+            document.getElementById('bnLoaiGiayTo').value = bn.loaiGiayTo || '';
+            document.getElementById('bnSoGiayTo').value = bn.soGiayTo || '';
+            document.getElementById('bnNgayCap').value = bn.ngayCap || '';
+            document.getElementById('bnNoiCap').value = bn.noiCap || '';
+            document.getElementById('bnBHYT').value = bn.bhyt || '';
+            document.getElementById('bnTinh').value = bn.tinh || '';
+            document.getElementById('bnXa').value = bn.xa || '';
+            document.getElementById('bnThon').value = bn.thon || '';
+            document.getElementById('bnHTTinh').value = bn.htTinh || '';
+            document.getElementById('bnHTXa').value = bn.htXa || '';
+            document.getElementById('bnHTThon').value = bn.htThon || '';
+            document.getElementById('bnLyDo').value = bn.lyDo || '1';
+            document.getElementById('bnPHTinh').value = bn.phTinh || '';
+            document.getElementById('bnPHXa').value = bn.phXa || '';
+            document.getElementById('bnPHThon').value = bn.phThon || '';
+            document.getElementById('bnNgayTaiNan').value = bn.ngayTaiNan || '';
+            document.getElementById('bnNgayVao').value = bn.ngayVao || '';
+            document.getElementById('bnNgayRa').value = bn.ngayRa || '';
+            document.getElementById('bnKetQua').value = bn.ketQua || '1';
+            document.getElementById('bnTinhTrang').value = bn.tinhTrang || '';
+            document.getElementById('bnChuyenTu').value = bn.chuyenTu || '';
+            document.getElementById('bnChanDoan').value = bn.chanDoan || '';
+            
+            if (bn.chanDoanChiTiet) {
+                try {
+                    const diagList = JSON.parse(bn.chanDoanChiTiet);
+                    diagList.forEach(d => addDiagnosisRow(d));
+                } catch(e) { console.error("Lỗi parse chẩn đoán", e); }
+            }
+        } else {
+            addDiagnosisRow();
+        }
+
+        // Handle File display
+        const fileInput = document.getElementById('bnFileHSBA');
+        const fileHelp = document.getElementById('fileHelpText');
+        const fileDisplay = document.getElementById('fileLinkDisplay');
+
+        if (!isNew && patientDataList[editIndex]?.fileHSBAUrl) {
+            const bn = patientDataList[editIndex];
+            fileInput.style.display = 'none';
+            fileHelp.style.display = 'none';
+            fileDisplay.style.display = 'block';
+            let fileLinkHtml = bn.fileHSBAUrl.startsWith('http') 
+                ? `<a href="${bn.fileHSBAUrl}" target="_blank" class="text-blue-600 font-bold underline mr-2"><i class="fas fa-external-link-alt mr-1"></i>Xem file đính kèm</a>`
+                : `<span class="text-green-600 font-bold mr-2"><i class="fas fa-database mr-1"></i>File đã lưu</span>`;
+
+            fileDisplay.innerHTML = `
+                <div class="flex items-center justify-between bg-blue-50 p-2 rounded border border-blue-100">
+                    <div>${fileLinkHtml}</div>
+                    <button onclick="removeAttachedFile()" type="button" class="text-red-500 text-xs font-bold hover:underline bg-white px-2 py-1 rounded border border-red-200 shadow-sm"><i class="fas fa-trash-alt mr-1"></i>Xóa file</button>
+                </div>`;
+        } else {
+            fileInput.style.display = 'block';
+            fileHelp.style.display = 'block';
+            fileDisplay.style.display = 'none';
+        }
+        document.getElementById('patientModal').style.display = 'flex';
+    }
+
+    /** Lưu dữ liệu bệnh nhân từ modal */
+    async function savePatientFromModal() {
+        const maHSBA = document.getElementById('bnMaHSBA').value.trim();
+        const ten = document.getElementById('bnHoTen').value.trim();
+        if (!maHSBA || !ten) { alert('⚠️ Vui lòng nhập Mã HSBA và Họ tên!'); return; }
+
+        const fileInput = document.getElementById('bnFileHSBA');
+        let fileData = null;
+        try { fileData = await readFileAsBase64(fileInput); } catch (e) { }
+
+        const diagRows = document.querySelectorAll('#diagnosisTableBody tr');
+        const diagList = Array.from(diagRows).map(tr => ({
+            type: tr.querySelector('.diag-type').value,
+            name: tr.querySelector('.diag-name').value.trim(),
+            icd: tr.querySelector('.diag-icd').value.trim()
+        })).filter(d => d.name || d.icd);
+
+        const editIndex = parseInt(document.getElementById('bnEditIndex').value);
+        const bnData = {
+            maHSBA: maHSBA,
+            maBN: document.getElementById('bnMaBN').value.trim(),
+            ten: ten,
+            ngaySinh: document.getElementById('bnNgaySinh').value,
+            tuoi: document.getElementById('bnTuoi').value,
+            gioi: document.getElementById('bnGioiTinh').value,
+            danToc: document.getElementById('bnDanToc').value,
+            quocTich: document.getElementById('bnQuocTich').value,
+            loaiGiayTo: document.getElementById('bnLoaiGiayTo').value,
+            soGiayTo: document.getElementById('bnSoGiayTo').value.trim(),
+            ngayCap: document.getElementById('bnNgayCap').value,
+            noiCap: document.getElementById('bnNoiCap').value.trim(),
+            bhyt: document.getElementById('bnBHYT').value.trim(),
+            tinh: document.getElementById('bnTinh').value.trim(),
+            xa: document.getElementById('bnXa').value.trim(),
+            thon: document.getElementById('bnThon').value.trim(),
+            htTinh: document.getElementById('bnHTTinh').value.trim(),
+            htXa: document.getElementById('bnHTXa').value.trim(),
+            htThon: document.getElementById('bnHTThon').value.trim(),
+            lyDo: document.getElementById('bnLyDo').value,
+            phTinh: document.getElementById('bnPHTinh').value.trim(),
+            phXa: document.getElementById('bnPHXa').value.trim(),
+            phThon: document.getElementById('bnPHThon').value.trim(),
+            ngayTaiNan: document.getElementById('bnNgayTaiNan').value,
+            ngayVao: document.getElementById('bnNgayVao').value,
+            ngayRa: document.getElementById('bnNgayRa').value,
+            ketQua: document.getElementById('bnKetQua').value,
+            tinhTrang: document.getElementById('bnTinhTrang').value,
+            chuyenTu: document.getElementById('bnChuyenTu').value.trim(),
+            chanDoan: document.getElementById('bnChanDoan').value.trim(),
+            chanDoanChiTiet: JSON.stringify(diagList),
+            icd: diagList.map(d => d.icd).filter(x => x).join(', '),
+            fileHSBA: fileData
+        };
+
+        if (fileData) {
+            bnData.fileHSBA = fileData;
+            bnData.fileHSBAUrl = '';
+            if (editIndex >= 0 && patientDataList[editIndex].fileHSBAUrl) {
+                 bnData.fileToDelete = patientDataList[editIndex].fileHSBAUrl;
+            }
+        } else {
+            if (_fileUrlToDeleteInModal) {
+                bnData.fileHSBAUrl = '';
+                bnData.fileToDelete = _fileUrlToDeleteInModal;
+            } else if (editIndex >= 0 && patientDataList[editIndex].fileHSBAUrl) {
+                bnData.fileHSBAUrl = patientDataList[editIndex].fileHSBAUrl;
+            }
+        }
+
+        if (editIndex >= 0) { patientDataList[editIndex] = bnData; }
+        else { patientDataList.push(bnData); }
+
+        renderPatientTable();
+        closePatientModal();
+    }
+
+    /** Xóa bệnh nhân khỏi danh sách */
+    function removePatient(idx) {
+        if (!confirm('Xác nhận xóa bệnh nhân này?')) return;
+        patientDataList.splice(idx, 1);
+        renderPatientTable();
+    }
+
+    /** Đóng modal và khôi phục trạng thái UI */
+    function closePatientModal() {
+        const modal = document.getElementById('patientModal');
+        if (!modal) return;
+        if (_isReportViewMode) {
+            modal.querySelectorAll('input, select, textarea').forEach(el => {
+                el.disabled = false;
+                el.classList.remove('bg-slate-50', 'cursor-not-allowed');
+            });
+            document.getElementById('btnSavePatient').style.display = '';
+            modal.querySelectorAll('button[onclick*="addDiagnosisRow"], button[onclick*="remove"], button[onclick*="copyAddress"]').forEach(btn => { btn.style.display = ''; });
+            document.getElementById('bnFileHSBA').style.display = '';
+            document.getElementById('fileHelpText').style.display = '';
+            document.getElementById('fileLinkDisplay').style.display = 'none';
+            _isReportViewMode = false;
+        }
+        modal.style.display = 'none';
+    }
+
+    /** Xóa file đính kèm tạm thời trong modal */
+    function removeAttachedFile() {
+        const index = parseInt(document.getElementById('bnEditIndex').value);
+        if (index >= 0 && patientDataList[index]?.fileHSBAUrl) {
+            _fileUrlToDeleteInModal = patientDataList[index].fileHSBAUrl;
+        }
+        updateUIFileDeleted();
+    }
+
+    function updateUIFileDeleted() {
+        document.getElementById('bnFileHSBA').value = ''; 
+        document.getElementById('bnFileHSBA').style.display = 'block';
+        document.getElementById('fileHelpText').style.display = 'block';
+        document.getElementById('fileLinkDisplay').style.display = 'none';
+    }
+
+    /** Thêm dòng chẩn đoán mới vào bảng */
+    function addDiagnosisRow(data) {
+        data = data || {};
+        const tbody = document.getElementById('diagnosisTableBody');
+        if (!tbody) return;
+
+        const loaiChanDoan = ((window.APP_CONFIG || {}).danhMuc || {}).LOAI_CHAN_DOAN || {};
+        let optionsHtml = '';
+        Object.keys(loaiChanDoan).forEach(function(ma) {
+            const label = loaiChanDoan[ma].label || ma;
+            const selected = (data.type === label) ? ' selected' : '';
+            optionsHtml += '<option value="' + label + '"' + selected + '>' + label + '</option>';
+        });
+        // Fallback nếu config rỗng
+        if (!optionsHtml) {
+            optionsHtml = '<option value="Bệnh chính">Bệnh chính</option><option value="Biến chứng">Biến chứng</option><option value="Bệnh kèm">Bệnh kèm</option><option value="Nguyên nhân">Nguyên nhân</option><option value="Tác nhân">Tác nhân</option><option value="Khác">Khác</option>';
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td class="p-1 border"><select class="w-full border rounded p-1 diag-type">' + optionsHtml + '</select></td>' +
+            '<td class="p-1 border"><input type="text" class="w-full border rounded p-1 diag-name" value="' + (data.name || '') + '" placeholder="Tên chẩn đoán"></td>' +
+            '<td class="p-1 border"><input type="text" class="w-full border rounded p-1 diag-icd" value="' + (data.icd || '') + '" placeholder="Mã ICD"></td>' +
+            '<td class="p-1 border text-center"><button type="button" onclick="this.closest(\'tr\').remove()" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button></td>';
+        tbody.appendChild(tr);
+    }
+
+    /** Copy địa chỉ */
+    function copyAddress(srcPrefix, destPrefix) {
+        const fields = ['Tinh', 'Xa', 'Thon'];
+        fields.forEach(f => {
+            const src = document.getElementById(srcPrefix + f);
+            const dest = document.getElementById(destPrefix + f);
+            if (src && dest) dest.value = src.value;
+        });
+    }
+
+    /** Mở modal ở chế độ xem (Báo cáo tổng) */
+    function openReportPatientModal(index) {
+        const bn = window._reportBenhNhan?.[index];
+        if (!bn) return;
+        _isReportViewMode = true;
+        const tempIndex = patientDataList.length;
+        patientDataList.push({ ...bn, fileHSBA: null });
+        openPatientModal(tempIndex);
+        patientDataList.splice(tempIndex, 1);
+
+        document.getElementById('patientModalTitle').innerHTML = `<i class="fas fa-eye mr-2 text-blue-600"></i>Xem chi tiết — ${bn.ten || ''} <span class="text-xs text-slate-400 ml-2">(${bn.khoa || ''})</span>`;
+        const modal = document.getElementById('patientModal');
+        modal.querySelectorAll('input, select, textarea').forEach(el => {
+            el.disabled = true;
+            el.classList.add('bg-slate-50', 'cursor-not-allowed');
+        });
+        document.getElementById('btnSavePatient').style.display = 'none';
+        modal.querySelectorAll('button[onclick*="addDiagnosisRow"], button[onclick*="remove"], button[onclick*="copyAddress"]').forEach(btn => { btn.style.display = 'none'; });
+        modal.querySelectorAll('#diagnosisTableBody button').forEach(btn => { btn.style.display = 'none'; });
+
+        document.getElementById('bnFileHSBA').style.display = 'none';
+        document.getElementById('fileHelpText').style.display = 'none';
+        const fileLinkDiv = document.getElementById('fileLinkDisplay');
+        if (bn.fileHSBAUrl) {
+            if (bn.fileHSBAUrl.startsWith('http')) {
+                fileLinkDiv.innerHTML = `<a href="${bn.fileHSBAUrl}" target="_blank" class="text-blue-600 hover:text-blue-800 underline font-bold"><i class="fas fa-external-link-alt mr-1"></i>Xem file đính kèm (Drive)</a>`;
+            } else if (bn.fileHSBAUrl.startsWith('data:')) {
+                const isPdf = bn.fileHSBAUrl.includes('application/pdf');
+                const downloadName = isPdf ? 'hoso_hsba.pdf' : 'hoso_hsba.docx';
+                fileLinkDiv.innerHTML = `
+                    <div class="mb-2 font-bold text-green-700 bg-green-50 p-1 rounded"><i class="fas fa-database mr-1"></i>File lưu trực tiếp trong Sheet</div>
+                    ${isPdf ? `<object data="${bn.fileHSBAUrl}" type="application/pdf" width="100%" height="200px" class="border rounded bg-slate-100"></object>` : `<div class="p-2 border rounded bg-slate-50 text-center"><a href="${bn.fileHSBAUrl}" download="${downloadName}" class="text-blue-600 font-bold underline">Tải xuống file văn bản</a></div>`}
+                `;
+            } else { fileLinkDiv.innerHTML = `<span class="text-red-600 font-bold">${bn.fileHSBAUrl}</span>`; }
+        } else { fileLinkDiv.innerHTML = '<span class="text-slate-400 italic">Không có file đính kèm</span>'; }
+        fileLinkDiv.style.display = 'block';
+    }
+</script>
