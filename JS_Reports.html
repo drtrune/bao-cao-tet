@@ -66,13 +66,42 @@
             ${grandTotals.map((v, idx) => `<td class="border-y border-blue-200 ${idx>=10?'bg-amber-100 text-red-700':''}">${v}</td>`).join('')}
         </tr></tbody></table></div>`;
 
-        // Các chỉ số phụ
-        html += `<div class="mt-8 overflow-hidden rounded-xl border border-slate-200"><table class="min-w-full text-xs border-collapse"><thead class="bg-slate-50"><tr><th class="text-left p-3 border">Chỉ tiêu</th><th class="w-32 text-center p-3 border">Số lượng</th><th class="p-3 border">Ghi chú</th></tr></thead><tbody class="divide-y bg-white">`;
-        html += `<tr><td class="p-2 border font-bold uppercase">Số ca phẫu thuật (loại 3 trở lên)</td><td class="text-center font-black text-lg p-2 border">${data.chiSo.pt}</td><td class="p-2 border italic text-slate-400">Tổng từ ${start} đến ${end}</td></tr>`;
-        html += `<tr><td class="p-2 border pl-6">- Trong đó: Cấp cứu do tai nạn</td><td class="text-center font-bold p-2 border text-orange-700">${data.chiSo.ptcc}</td><td class="p-2 border"></td></tr>`;
-        html += `<tr><td class="p-2 border font-bold uppercase">Tổng trẻ sinh</td><td class="text-center font-black text-lg p-2 border text-pink-700">${data.chiSo.tre}</td><td class="p-2 border"></td></tr>`;
-        html += `<tr><td class="p-2 border pl-6">- Trong đó: Sinh mổ</td><td class="text-center font-bold p-2 border">${data.chiSo.mo}</td><td class="p-2 border"></td></tr>`;
-        html += `<tr><td class="p-2 border font-bold uppercase">Tổng máu dự trữ (ml)</td><td class="text-center font-black text-lg p-2 border text-red-600">${data.chiSo.mau}</td><td class="p-2 border">Ngày cuối: ${end}</td></tr></tbody></table></div>`;
+        // Render các chỉ số phụ theo từng section từ config
+        const chiSoConfig = (window.APP_CONFIG || {}).chiSoKhac || [];
+        const sectionMap = {};
+        chiSoConfig.forEach(function(cs) {
+            if (!sectionMap[cs.section]) sectionMap[cs.section] = [];
+            sectionMap[cs.section].push(cs);
+        });
+
+        Object.keys(sectionMap).forEach(function(sectionId) {
+            const items = sectionMap[sectionId];
+            const firstItem = items[0];
+            const sectionName = firstItem.ten.split('(')[0].replace('Số ca ', '').replace('Tổng số ', '').trim();
+            const colorClass = firstItem.mauNen === 'red' ? 'text-red-600' : (firstItem.mauNen === 'pink' ? 'text-pink-700' : 'text-orange-700');
+
+            html += `<div class="mt-8 overflow-hidden rounded-xl border border-slate-200">
+                <table class="min-w-full text-xs border-collapse">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="text-left p-3 border uppercase font-black text-slate-700"><i class="fas ${firstItem.icon} mr-2"></i>Chỉ tiêu ${sectionName}</th>
+                            <th class="w-32 text-center p-3 border">Số lượng</th>
+                            <th class="p-3 border">Ghi chú</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y bg-white">`;
+            
+            items.forEach(function(cs) {
+                const val = data.chiSo[cs.ma] || 0;
+                const isSub = cs.ten.toLowerCase().includes('trong đó');
+                html += `<tr>
+                    <td class="p-2 border ${isSub ? 'pl-8 text-slate-600 italic' : 'font-bold uppercase'}">${cs.ten}</td>
+                    <td class="text-center font-black text-lg p-2 border ${colorClass}">${val}</td>
+                    <td class="p-2 border text-[10px] text-slate-400 italic">${isSub ? '' : 'Tổng cộng'}</td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+        });
 
         // Danh sách bệnh nhân
         if (data.benhNhan?.length > 0) {
