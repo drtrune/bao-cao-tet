@@ -1,7 +1,16 @@
 /**
- * AUTO-GENERATED CONFIG — Không chỉnh sửa trực tiếp
- * Nguồn: Google Sheet Config → GAS publishConfig → GitHub API
- * Cập nhật lúc: 2026-04-26T10:00:00+07:00 (bản khởi tạo)
+ * 🌐 CONFIG FRONTEND (JavaScript Tĩnh)
+ * ----------------------------------------------------------------------
+ * FILE: config.js
+ * MỤC ĐÍCH: 
+ *   - Chứa toàn bộ hằng số, danh mục, và cài đặt hiển thị cho giao diện người dùng.
+ *   - Được tải trực tiếp từ GitHub Pages để tối ưu tốc độ render.
+ * 
+ * LƯU Ý: Đây là "kết quả đầu ra". KHÔNG chỉnh sửa trực tiếp file này.
+ * Để cập nhật cấu hình: 
+ *   1. Chỉnh sửa Google Sheet tương ứng.
+ *   2. Dùng menu "⚙️ Config" trên Sheet để Publish lại.
+ * ----------------------------------------------------------------------
  */
 window.APP_CONFIG = {
   "version": "2026-04-26T10:00:00",

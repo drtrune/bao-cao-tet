@@ -1,7 +1,14 @@
 /**
- * Config & Management — Quản lý cấu hình Spreadsheet và GitHub
+ * 🛠️ CONFIG BACKEND (Google Apps Script)
+ * ----------------------------------------------------------------------
+ * FILE: Config_Backend.gs
+ * MỤC ĐÍCH: 
+ *   1. Đọc dữ liệu cấu hình từ các Sheet (Config_*)
+ *   2. Cung cấp hàm publish để đẩy cấu hình lên GitHub (tạo ra file config.js)
+ *   3. Quản trị các tham số hệ thống (PAT, Spreadsheet ID)
  * 
- * Workflow: Sheet Config_* → readAllConfig() → publishConfigToGitHub() → config.js trên GitHub Pages
+ * LƯU Ý: Đây là "nguồn phát". Mọi thay đổi về logic cấu hình thực hiện tại đây.
+ * ----------------------------------------------------------------------
  */
 
 // ======================================================================
