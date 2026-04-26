@@ -1,45 +1,58 @@
-# Simple workflow for deploying static content to GitHub Pages
-name: Deploy static content to Pages
+# Workflow để deploy song song branch main (root) và branch test (/test)
+name: Deploy Multi-Branch to Pages
 
 on:
-  # Runs on pushes targeting the default branch and the test branch
   push:
     branches: ["main", "test"]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job since we're just deploying
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Main branch
         uses: actions/checkout@v4
-      
+        with:
+          ref: main
+          path: main_branch
+
+      - name: Checkout Test branch
+        uses: actions/checkout@v4
+        with:
+          ref: test
+          path: test_branch
+
+      - name: Build Deployment Folder
+        run: |
+          mkdir dist
+          # Copy main vào root của dist
+          cp -r main_branch/* dist/
+          # Tạo folder test và copy branch test vào
+          mkdir -p dist/test
+          cp -r test_branch/* dist/test/
+          # Xóa các folder workflow trong dist để sạch sẽ
+          rm -rf dist/.github
+          rm -rf dist/test/.github
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
       
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository (or specify a subfolder if needed)
-          path: '.'
+          path: './dist'
       
       - name: Deploy to GitHub Pages
         id: deployment
