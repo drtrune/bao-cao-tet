@@ -142,6 +142,21 @@ function toggleApproval(ngay, isApproved) {
 }
 
 /**
+ * Hàm hỗ trợ Trigger: Tự động duyệt báo cáo cho ngày hiện tại.
+ * Thiết lập Trigger chạy hàm này vào khung giờ mong muốn (VD: 23:59 hàng ngày).
+ */
+function autoApproveCurrentDate() {
+  const vnNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  const yyyy = vnNow.getFullYear();
+  const mm = String(vnNow.getMonth() + 1).padStart(2, '0');
+  const dd = String(vnNow.getDate()).padStart(2, '0');
+  const todayStr = `${yyyy}-${mm}-${dd}`;
+  
+  Logger.log("Đang tự động duyệt cho ngày: " + todayStr);
+  return toggleApproval(todayStr, true);
+}
+
+/**
  * Hàm lưu báo cáo — cơ chế UPSERT (xoá cũ rồi ghi mới)
  * Đảm bảo mỗi (khoa, ngày) chỉ có 1 bộ dữ liệu duy nhất
  */
@@ -165,7 +180,7 @@ function saveReport(payload) {
         "(1)", "(2.1)", "(2.2)", "(3)", "(4.1)", "(4.2)",
         "(5.1)", "(5.2)", "(6.1)", "(6.2)", "(7.1)", "(7.2)",
         "PT", "PT_CC", "Mau", "Tre", "Mo", "SDT_NguoiBaoCao",
-        "Trạng thái", "Phiên bản"
+        "Trạng thái", "Phiên bản", "(4.3)", "ChiTietChuyenKhoa", "(3.2)", "ChiTietNhanKhoa"
       ]);
     }
 
@@ -207,7 +222,11 @@ function saveReport(payload) {
         payload.chiSo.treSinhMo,
         "'" + (payload.sdtNguoiBaoCao || ''),
         "Mới nhất",
-        currentVersion
+        currentVersion,
+        row.c43 || 0,
+        row.chuyenKhoaChiTiet || "[]",
+        row.c32 || 0,
+        row.nhanKhoaChiTiet || "[]"
       ]);
     });
 
@@ -322,20 +341,40 @@ function getExistingReport(khoa, ngay) {
     if (sheetTK && sheetTK.getLastRow() > 1) {
       const dataTK = sheetTK.getDataRange().getValues();
       
-      // 1. Tìm báo cáo ngày hôm nay
+      const homNayDate = new Date(ngay);
+      const homQuaDate = new Date(homNayDate.getTime() - 24 * 60 * 60 * 1000);
+      const homQuaStr = Utilities.formatDate(homQuaDate, "GMT+7", "yyyy-MM-dd");
+      const autoCheck = (str) => (str || "").replace(/\*/g, "").trim();
+
+      // 1. Tìm báo cáo ngày hôm nay và Lấy báo cáo tồn hôm qua
+      let prevDataMap = {};
+      let expectedNhans = {};
+      let expectedChuyens = {};
+      let transferDetails = [];
+
       for (let i = 1; i < dataTK.length; i++) {
         const rowDate = Utilities.formatDate(new Date(dataTK[i][1]), "GMT+7", "yyyy-MM-dd");
-        if (dataTK[i][2] === khoa && rowDate === ngay) {
+        const rowKhoa = dataTK[i][2];
+        const doiTuong = dataTK[i][3];
+        const trangThai = dataTK[i][22];
+
+        if (trangThai === "Lịch sử") continue;
+
+        // Báo cáo hôm nay của khoa
+        if (rowKhoa === khoa && rowDate === ngay) {
           result.found = true;
-          // ... logic cũ ...
           // Lưu ý: Cột 7.1 là index 14 (cột O) trong sheet Data_ThongKe
           result.thongKe.push({
-            doiTuong: dataTK[i][3],
+            doiTuong: doiTuong,
             c1: dataTK[i][4], c21: dataTK[i][5], c22: dataTK[i][6],
             c3: dataTK[i][7], c41: dataTK[i][8], c42: dataTK[i][9],
             c51: dataTK[i][10], c52: dataTK[i][11],
             c61: dataTK[i][12], c62: dataTK[i][13],
             c71: dataTK[i][14], c72: dataTK[i][15],
+            c43: dataTK[i][24] || 0,
+            chuyenKhoaChiTiet: dataTK[i][25] || "[]",
+            c32: dataTK[i][26] || 0,
+            nhanKhoaChiTiet: dataTK[i][27] || "[]"
           });
           // Lấy chiSo từ dòng đầu tiên tìm thấy
           if (!result.chiSo || !result.chiSo.phauThuat) {
@@ -349,45 +388,124 @@ function getExistingReport(khoa, ngay) {
             result.sdtNguoiBaoCao = dataTK[i][21] || '';
           }
         }
-      }
 
-      // 2. Nếu KHÔNG thấy báo cáo hôm nay -> Tìm báo cáo HÔM QUA để lấy cột 7.1 -> cột 1
-      if (!result.found) {
-        const homNayDate = new Date(ngay);
-        const homQuaDate = new Date(homNayDate.getTime() - 24 * 60 * 60 * 1000);
-        const homQuaStr = Utilities.formatDate(homQuaDate, "GMT+7", "yyyy-MM-dd");
-        
-        // Helper chuẩn hóa tên: bỏ dấu *, trim space
-        const autoCheck = (str) => (str || "").replace(/\*/g, "").trim();
-
-        // Mảng mapping doiTuong -> giaTriCot71HomQua
-        let prevDataMap = {};
-        
-        for (let i = 1; i < dataTK.length; i++) {
-            const rowDate = Utilities.formatDate(new Date(dataTK[i][1]), "GMT+7", "yyyy-MM-dd");
-            if (dataTK[i][2] === khoa && rowDate === homQuaStr) {
-                // Key là doiTuong (Khám bệnh, Vào viện...) -> Chuẩn hóa key
-                prevDataMap[autoCheck(dataTK[i][3])] = dataTK[i][14] || 0; 
-            }
+        // Báo cáo hôm qua của khoa (để lấy tồn c1)
+        if (rowKhoa === khoa && rowDate === homQuaStr) {
+            prevDataMap[autoCheck(doiTuong)] = dataTK[i][14] || 0; 
         }
 
-        // Tạo khung dữ liệu rỗng cho ngày hôm nay nhưng điền sẵn cột 1 từ hôm qua
-        // Danh sách đối tượng mặc định chuẩn (Khớp với ROW_NAMES ở frontend index.html)
+        // Báo cáo chuyển/nhận khoa liên quan đến khoa hiện tại trong hôm nay
+        if (rowKhoa !== khoa && rowDate === ngay) {
+            // 1. Khoa khác báo CHUYỂN ĐẾN khoa này -> Khoa này cần NHẬN
+            const dtDetails = dataTK[i][25]; // ChuyenKhoaChiTiet của khoa khác
+            if (dtDetails && dtDetails !== "[]") {
+               try {
+                 const arr = JSON.parse(dtDetails);
+                 const targetKhoa = (khoa || "").trim().toUpperCase();
+                 arr.forEach(item => {
+                    const itemTarget = (item.khoa || "").trim().toUpperCase();
+                    if (itemTarget === targetKhoa) {
+                        const soLuong = parseInt(item.soLuong) || 0;
+                        if (soLuong > 0) {
+                            if (!expectedNhans[doiTuong]) expectedNhans[doiTuong] = 0;
+                            expectedNhans[doiTuong] += soLuong;
+                            transferDetails.push({
+                                type: "Nhận từ khoa khác",
+                                fromKhoa: rowKhoa,
+                                doiTuong: doiTuong,
+                                soLuong: soLuong
+                            });
+                        }
+                    }
+                 });
+               } catch(e) {}
+            }
+            
+            // 2. Khoa khác báo NHẬN TỪ khoa này -> Khoa này cần CHUYỂN
+            const nkDetails = dataTK[i][27]; // NhanKhoaChiTiet của khoa khác
+            if (nkDetails && nkDetails !== "[]") {
+               try {
+                 const arr = JSON.parse(nkDetails);
+                 const targetKhoa = (khoa || "").trim().toUpperCase();
+                 arr.forEach(item => {
+                    const itemTarget = (item.khoa || "").trim().toUpperCase();
+                    if (itemTarget === targetKhoa) {
+                        const soLuong = parseInt(item.soLuong) || 0;
+                        if (soLuong > 0) {
+                            if (!expectedChuyens[doiTuong]) expectedChuyens[doiTuong] = 0;
+                            expectedChuyens[doiTuong] += soLuong;
+                            transferDetails.push({
+                                type: "Chuyển đi khoa khác",
+                                fromKhoa: rowKhoa,
+                                doiTuong: doiTuong,
+                                soLuong: soLuong
+                            });
+                        }
+                    }
+                 });
+               } catch(e) {}
+            }
+        }
+      }
+
+      result.prevC71Map = prevDataMap;
+      
+      // Lọc bỏ các cảnh báo trùng lặp (nếu báo cáo hiện tại đã có dữ liệu khớp)
+      if (result.found && transferDetails.length > 0) {
+          const norm = (s) => (s || "").trim().toUpperCase();
+          transferDetails = transferDetails.filter(alert => {
+              const dt = alert.doiTuong;
+              const khoaLienQuan = norm(alert.fromKhoa);
+              const reportRow = result.thongKe.find(r => r.doiTuong === dt);
+              if (!reportRow) return true;
+              
+              const currentDetails = alert.type.includes("Nhận") ? reportRow.nhanKhoaChiTiet : reportRow.chuyenKhoaChiTiet;
+              try {
+                  const arr = JSON.parse(currentDetails);
+                  // Không hiển thị nếu đã có dòng khớp cả Khoa và Số lượng
+                  const matched = arr.some(item => 
+                      norm(item.khoa) === khoaLienQuan && 
+                      parseInt(item.soLuong) === parseInt(alert.soLuong)
+                  );
+                  return !matched;
+              } catch(e) { return true; }
+          });
+      }
+
+      if (transferDetails.length > 0) {
+          result.transferAlerts = {
+              details: transferDetails,
+              expectedNhans: expectedNhans,
+              expectedChuyens: expectedChuyens
+          };
+      }
+
+      // 2. Nếu KHÔNG thấy báo cáo hôm nay -> Tạo sẵn
+      if (!result.found) {
         const defaultDoiTuong = [
             "KHÁM CHỮA BỆNH CHUNG",
             "Tai nạn giao thông",
             "COVID-19",
             "Các đối tượng người bệnh khác (không gồm các đối tượng trên)"
         ];        
-        // Cần đảm bảo thứ tự đúng như bảng nhập liệu
-        // Ở frontend danh sách dòng là cố định, backend trả về list object
-        // Ta tạo list object với c1 lấy từ prevDataMap
+        
         if (Object.keys(prevDataMap).length > 0) {
-             result.failButFoundPrev = true; // Cờ báo hiệu: tìm thấy data cũ
+             result.failButFoundPrev = true;
              result.thongKe = defaultDoiTuong.map(dt => ({
                 doiTuong: dt,
-                c1: prevDataMap[autoCheck(dt)] || 0, // Dùng key chuẩn hóa để lookup
-                c21: 0, c22: 0, c3: 0, c41: 0, c42: 0, c51: 0, c52: 0, c61: 0, c62: 0, c71: 0, c72: 0
+                c1: prevDataMap[autoCheck(dt)] || 0,
+                c21: 0, c22: 0, c3: 0, c32: 0,
+                c41: 0, c42: 0, c43: 0,
+                c51: 0, c52: 0, c61: 0, c62: 0, c71: 0, c72: 0
+             }));
+        } else if (Object.keys(expectedNhans).length > 0) {
+             // Có nhận chuyển khoa nhưng chưa có data hôm qua
+             result.failButFoundPrev = true;
+             result.thongKe = defaultDoiTuong.map(dt => ({
+                doiTuong: dt,
+                c1: 0, c21: 0, c22: 0, c3: 0, c32: 0,
+                c41: 0, c42: 0, c43: 0,
+                c51: 0, c52: 0, c61: 0, c62: 0, c71: 0, c72: 0
              }));
         }
       }
@@ -548,8 +666,8 @@ function getAggregatedReportRange(startDate, endDate) {
         if (!report.khoaDaNop.includes(khoa)) report.khoaDaNop.push(khoa);
 
         if (idx !== -1) {
-          // Các cột CỘNG DỒN (số dòng chảy): 2.1, 2.2, 3, 4.1, 4.2, 5.1, 5.2, 6.1, 6.2
-          // KHÔNG bao gồm 7.2 nữa (đã sửa Lỗi 2)
+          // Các cột CỘNG DỒN: 2.1, 2.2, 3, 4.1, 4.2, 5.1, 5.2, 6.1, 6.2
+          // Index trong row: 5 (2.1), 6 (2.2), 7 (3.1), 8 (4.1), 9 (4.2), 10 (5.1), 11 (5.2), 12 (6.1), 13 (6.2)
           const dynamicColIndices = [5, 6, 7, 8, 9, 10, 11, 12, 13];
           const dynamicValsIndices = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -559,11 +677,11 @@ function getAggregatedReportRange(startDate, endDate) {
             );
           });
 
-          // BN cũ (1) — chỉ lấy từ ngày ĐẦU TIÊN thực tế có data (sửa Lỗi 4)
+          // BN cũ (1) — chỉ lấy từ ngày ĐẦU TIÊN thực tế có data
           if (rowDate === minDateFound) {
             report.thongKe[idx].vals[0] += parseFloat(row[4] || 0);
           }
-          // BN hiện có (7.1) + Ca nặng (7.2) — chỉ lấy từ ngày CUỐI CÙNG thực tế (sửa Lỗi 2 & 3)
+          // BN hiện có (7.1) + Ca nặng (7.2) — chỉ lấy từ ngày CUỐI CÙNG thực tế
           if (rowDate === maxDateFound) {
             report.thongKe[idx].vals[10] += parseFloat(row[14] || 0);
             report.thongKe[idx].vals[11] += parseFloat(row[15] || 0);
@@ -585,7 +703,15 @@ function getAggregatedReportRange(startDate, endDate) {
       }
     });
 
-    // === Bước 3: Lấy dữ liệu danh sách bệnh nhân ===
+    // === Bước 3: Đảm bảo hàng Tổng cộng (index 0) là tổng của các hàng chi tiết (1, 2, 3) ===
+    // Điều này quan trọng vì báo cáo tổng hợp toàn viện không nên lấy trực tiếp hàng tổng từ từng khoa
+    for (let c = 0; c < 12; c++) {
+      report.thongKe[0].vals[c] = (report.thongKe[1].vals[c] || 0) + 
+                                  (report.thongKe[2].vals[c] || 0) + 
+                                  (report.thongKe[3].vals[c] || 0);
+    }
+
+    // === Bước 4: Lấy dữ liệu danh sách bệnh nhân ===
     const sheetBN = ss.getSheetByName("Data_DanhSachCa");
     report.benhNhan = [];
 
@@ -782,16 +908,16 @@ function refreshPhysicalSummarySheetRange(startDate, endDate) {
 
   const header1 = [
     "TT", "Khám, cấp cứu", "BN cũ (1)", "Khám bệnh (2)", "",
-    "Vào viện (3)", "Chuyển viện (4)", "",
+    "Vào viện (3.1)", "Chuyển viện (4)", "",
     "Ra viện (5)", "", "Tử vong (6)", "",
     "*BN hiện có tại thời điểm gửi báo cáo (7)", "",
   ];
   const header2 = [
     "", "", "(1)", "Tổng số (2.1)", "Khám BHYT (2.2)",
-    "(3)", "Ngoại trú (4.1)", "Nội trú (4.2)",
-    "Tổng số (5.1)", "Tiên lượng tử vong xin về (5.2)",
+    "Tổng số (3.1)", "Ngoại trú (4.1)", "Nội trú (4.2)",
+    "Tổng số (5.1)", "Tiên lượng TV xin về (5.2)",
     "Tử vong nội viện (6.1)", "Tử vong ngoại viện (6.2)",
-    "Tổng số (7.1)", "Ca nặng, hoặc nguy kịch (7.2)",
+    "Tổng số (7.1)", "Ca nặng, nguy kịch (7.2)",
   ];
 
   sheetSummary

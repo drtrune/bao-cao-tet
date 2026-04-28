@@ -157,6 +157,7 @@
 
                 <div id="sectionNoiTru" class="section-hidden">
                     <h2 class="text-xs font-black text-slate-800 uppercase mb-3 flex items-center"><i class="fas fa-clipboard-list mr-2 text-blue-600"></i>Tình hình khám, cấp cứu tai nạn, ngộ độc</h2>
+                    <div id="c1MismatchWarning" style="display:none;"></div>
                     <div class="table-container mb-8">
                         <table class="min-w-[1050px] text-center text-[11px] border-collapse">
                             <thead>
@@ -165,8 +166,8 @@
                                     <th rowspan="2" class="sticky-col-2">Khám, cấp cứu</th>
                                     <th rowspan="2" class="col-num">BN cũ<br>(1)</th>
                                     <th colspan="2">Khám bệnh (2)</th>
-                                    <th rowspan="2" class="col-num">Vào<br>viện<br>(3)</th>
-                                    <th colspan="2">Chuyển viện (4)</th>
+                                    <th colspan="2">Vào viện (3)</th>
+                                    <th colspan="3">Chuyển viện/khoa (4)</th>
                                     <th colspan="2">Ra viện (5)</th>
                                     <th colspan="2">Tử vong (6)</th>
                                     <th colspan="2" class="bg-amber-100 italic">*BN hiện có tại thời<br>điểm gửi báo cáo (7)</th>
@@ -174,8 +175,11 @@
                                 <tr>
                                     <th class="col-num">Tổng số<br><span class="text-red-600">(2.1)</span></th>
                                     <th class="col-num">Khám<br>BHYT<br><span class="text-red-600">(2.2)</span></th>
+                                    <th class="col-num">Từ ngoài<br>vào<br><span class="text-red-600">(3.1)</span></th>
+                                    <th class="col-num text-blue-700">Nhận từ<br>khoa<br><span class="text-red-600">(3.2)</span></th>
                                     <th class="col-num">Ngoại<br>trú<br><span class="text-red-600">(4.1)</span></th>
                                     <th class="col-num">Nội<br>trú<br><span class="text-red-600">(4.2)</span></th>
+                                    <th class="col-num text-blue-700">Chuyển<br>khoa<br><span class="text-red-600">(4.3)</span></th>
                                     <th class="col-num">Tổng<br>số<br><span class="text-red-600">(5.1)</span></th>
                                     <th class="col-num text-[9px]">Tiên lượng tử vong<br>xin về <span class="text-red-600">(5.2)</span></th>
                                     <th class="col-num">Tử vong<br>nội viện<br><span class="text-red-600">(6.1)</span></th>
@@ -459,7 +463,7 @@
                     // KHÁM BỆNH:
                     // Chỉ nhập: Khám bệnh (c21, c22), Chuyển viện Ngoại trú (c41)
                     // Disable: BN cũ (c1), Vào viện (c3), Chuyển nội trú (c42), Ra viện (c51, c52), TV (c61, c62), Hiện có (c72)
-                    const disableCodes = [1, 3, 42, 51, 52, 61, 62];
+                    const disableCodes = [1, 3, 32, 42, 51, 52, 61, 62];
                     disableCodes.forEach(c => {
                         const i = getIdx(c);
                         if(i !== -1 && inputs[i]) {
@@ -510,7 +514,11 @@
             });
         }
 
-        const COL_CODES = [1, 21, 22, 3, 41, 42, 51, 52, 61, 62];
+        const COL_CODES = [1, 21, 22, 3, 32, 41, 42, 43, 51, 52, 61, 62];
+
+        /** Biến lưu dữ liệu chuyển khoa của các hàng 1, 2, 3 */
+        let chuyenKhoaDataList = { 1: [], 2: [], 3: [] };
+        let nhanKhoaDataList = { 1: [], 2: [], 3: [] };
 
         /** Tạo bảng 7 dòng thống kê */
         function initStatsTable() {
@@ -525,7 +533,43 @@
                 const clickAction = isTotalRow ? `onclick="alert('Hàng này hệ thống sẽ tự động tính tổng từ các hàng chi tiết bên dưới.\\n\\nVui lòng nhập liệu vào các hàng [1], [2], [3]...')" ` : "";
                 
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td class="sticky-col-1 border p-1 text-center font-bold text-slate-400">${isTotalRow ? '-' : idx}</td><td class="sticky-col-2 border p-2 text-left ${bgClass}">${name} ${isTotalRow ? '<br><span class="text-[10px] text-slate-500 font-normal italic normal-case">(Hệ thống tự tính, không nhập)</span>' : ''}</td>${COL_CODES.map(c => `<td class="p-0 border"><input type="number" class="table-input c${c} row-${idx} ${inputClass}" onchange="${isTotalRow ? '' : `calc71(${idx}); calcTotals()`}" value="0" ${inputDisabled} ${clickAction}></td>`).join('')}<td class="p-1 border ${bg71Class} font-black res-71 text-[13px]" ${clickAction}>0</td><td class="p-0 border ${bg71Class}"><input type="number" class="table-input c72 row-${idx} ${isTotalRow ? 'bg-red-50 text-red-800 font-bold' : ''}" onchange="${isTotalRow ? '' : `calcTotals()`}" value="0" ${inputDisabled} ${clickAction}></td>`;
+                if (isTotalRow) tr.classList.add('total-row');
+                
+                let colsHtml = COL_CODES.map(c => {
+                    if (c === 43) {
+                        // Nút Chuyển khoa (Modal)
+                        if (isTotalRow) {
+                            return `<td class="p-0 border bg-slate-100"><input type="number" class="table-input c43 row-0 text-red-700 font-bold" value="0" readonly tabindex="-1"></td>`;
+                        } else {
+                            return `<td class="p-0 border align-middle">
+                                <div class="flex items-center justify-center cursor-pointer text-blue-600 hover:text-blue-800 font-bold w-full h-full py-1 min-h-[36px]" onclick="openChuyenKhoaModal(${idx})">
+                                    <input type="number" class="table-input c43 row-${idx} bg-transparent pointer-events-none w-10 p-0 text-blue-700 font-black text-center" value="0" readonly tabindex="-1">
+                                    <i class="fas fa-plus-circle"></i>
+                                </div>
+                            </td>`;
+                        }
+                    } else if (c === 32) {
+                        // Nút Nhận từ khoa (Modal)
+                        if (isTotalRow) {
+                            return `<td class="p-0 border bg-slate-100"><input type="number" class="table-input c32 row-0 text-blue-700 font-bold" value="0" readonly tabindex="-1"></td>`;
+                        } else {
+                            return `<td class="p-0 border align-middle">
+                                <div class="flex items-center justify-center cursor-pointer text-blue-600 hover:text-blue-800 font-bold w-full h-full py-1 min-h-[36px]" onclick="openNhanKhoaModal(${idx})">
+                                    <input type="number" class="table-input c32 row-${idx} bg-transparent pointer-events-none w-10 p-0 text-blue-700 font-black text-center" value="0" readonly tabindex="-1">
+                                    <i class="fas fa-plus-circle"></i>
+                                </div>
+                            </td>`;
+                        }
+                    } else {
+                        return `<td class="p-0 border"><input type="number" class="table-input c${c} row-${idx} ${inputClass}" onchange="${isTotalRow ? '' : `calc71(${idx}); calcTotals()`}" value="0" ${inputDisabled} ${clickAction}></td>`;
+                    }
+                }).join('');
+
+                tr.innerHTML = `<td class="sticky-col-1 border p-1 text-center font-bold text-slate-400">${isTotalRow ? '-' : idx}</td>
+                <td class="sticky-col-2 border p-2 text-left ${bgClass}">${name} ${isTotalRow ? '<br><span class="text-[10px] text-slate-500 font-normal italic normal-case">(Hệ thống tự tính, không nhập)</span>' : ''}</td>
+                ${colsHtml}
+                <td class="p-1 border ${bg71Class} font-black res-71 text-[13px]" ${clickAction}>0</td>
+                <td class="p-0 border ${bg71Class}"><input type="number" class="table-input c72 row-${idx} ${isTotalRow ? 'bg-red-50 text-red-800 font-bold' : ''}" onchange="${isTotalRow ? '' : `calcTotals()`}" value="0" ${inputDisabled} ${clickAction}></td>`;
                 body.appendChild(tr);
             });
         }
@@ -535,11 +579,13 @@
             if (r === 0) return; // Không tính cho dòng tổng KHÁM CHỮA BỆNH CHUNG theo công thức này, mà nó sẽ tự lấy tổng từ các dòng dưới
             const c1 = parseFloat(document.querySelector(`.c1.row-${r}`).value) || 0;
             const c3 = parseFloat(document.querySelector(`.c3.row-${r}`).value) || 0;
+            const c32 = parseFloat(document.querySelector(`.c32.row-${r}`).value) || 0;
             const c42 = parseFloat(document.querySelector(`.c42.row-${r}`).value) || 0;
+            const c43 = parseFloat(document.querySelector(`.c43.row-${r}`).value) || 0;
             const c51 = parseFloat(document.querySelector(`.c51.row-${r}`).value) || 0;
             const c61 = parseFloat(document.querySelector(`.c61.row-${r}`).value) || 0;
             const c62 = parseFloat(document.querySelector(`.c62.row-${r}`).value) || 0;
-            document.querySelectorAll('.res-71')[r].innerText = c1 + c3 - c42 - c51 - c61 - c62;
+            document.querySelectorAll('.res-71')[r].innerText = c1 + c3 + c32 - c42 - c43 - c51 - c61 - c62;
         }
 
         /** Tính hàng KHÁM CHỮA BỆNH CHUNG (Dòng 0) */
@@ -569,6 +615,44 @@
             }
             const total72Input = document.querySelector(`.c72.row-0`);
             if (total72Input) total72Input.value = sum72;
+
+            checkC1Mismatch();
+        }
+
+        function checkC1Mismatch() {
+            if (!window.currentPrevC71Map) return;
+            const rows = document.querySelectorAll('#statsTableBody tr');
+            let hasMismatch = false;
+            let mismatchHtml = '';
+
+            rows.forEach((tr, i) => {
+                if (tr.classList.contains('total-row')) return;
+                const doiTuong = ROW_NAMES[i];
+                if (!doiTuong) return;
+                
+                const norm = s => (s || '').replace(/\*/g, '').trim();
+                const key = norm(doiTuong);
+                
+                const prevVal = window.currentPrevC71Map[key];
+                if (prevVal !== undefined) {
+                    const currentC1 = parseFloat(tr.querySelector('.c1').value) || 0;
+                    if (currentC1 !== parseFloat(prevVal)) {
+                        hasMismatch = true;
+                        mismatchHtml += `<li>Dòng <b>${doiTuong}</b>: Tồn hôm qua <b>${prevVal}</b>, đang nhập BN cũ <b>${currentC1}</b></li>`;
+                    }
+                }
+            });
+
+            const warningContainer = document.getElementById('c1MismatchWarning');
+            if (hasMismatch) {
+                warningContainer.innerHTML = `<div class="mb-4 p-3 rounded-xl text-sm font-bold bg-orange-50 border border-orange-300 text-orange-800">
+                    <p><i class="fas fa-exclamation-circle mr-2 text-orange-600"></i><strong>Cảnh báo lệch số liệu:</strong> Số lượng BN cũ (1) hôm nay không khớp với số BN hiện có (7.1) của ngày hôm qua:</p>
+                    <ul class="list-disc ml-6 mt-1 font-normal text-xs">${mismatchHtml}</ul>
+                </div>`;
+                warningContainer.style.display = 'block';
+            } else {
+                warningContainer.style.display = 'none';
+            }
         }
 
         /** Mảng lưu trữ dữ liệu bệnh nhân trong bộ nhớ */
@@ -1033,30 +1117,119 @@
 
                 if (data && (data.found || data.failButFoundPrev)) {
                     fillFormWithData(data);
+                    
                     if (data.found) {
                          banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-amber-50 border border-amber-300 text-amber-800';
-                         banner.innerHTML = '📝 Đang sửa báo cáo đã gửi trước đó. Nhấn "Gửi" để cập nhật.';
+                         banner.innerHTML = `📝 Đang sửa báo cáo đã gửi trước đó. Nhấn "Gửi" để cập nhật.`;
                     } else {
                          // Trường hợp failButFoundPrev: Tạo mới nhưng có số liệu cũ từ hôm qua
                          banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-purple-50 border border-purple-300 text-purple-700';
-                         banner.innerHTML = '🆗 Đã tìm thấy số liệu "Hiện có" từ ngày hôm qua để điền vào "BN cũ" hôm nay.';
-                         setTimeout(() => { banner.classList.add('hidden'); }, 8000);
+                         banner.innerHTML = `🆗 Đã tìm thấy số liệu "Hiện có" từ ngày hôm qua để điền vào "BN cũ" hôm nay.`;
+                    }
+                    
+                    if (data.transferAlerts && data.transferAlerts.details && data.transferAlerts.details.length > 0) {
+                        processTransferAlerts(data.transferAlerts.details);
+                    } else {
+                        setTimeout(() => { if(!banner.innerHTML.includes('Báo cáo ngày này')) banner.classList.add('hidden'); }, 3000);
                     }
                 } else {
                     // Không có gì cả (cả hôm nay lẫn hôm qua)
                     resetForm();
+                    
                     banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-green-50 border border-green-300 text-green-700';
-                    banner.innerHTML = '🆕 Tạo báo cáo mới (Chưa có dữ liệu cũ).';
-                    setTimeout(() => { banner.className = 'hidden'; }, 3000);
+                    banner.innerHTML = `🆕 Tạo báo cáo mới (Chưa có dữ liệu cũ).`;
+                    
+                    if (data && data.transferAlerts && data.transferAlerts.details && data.transferAlerts.details.length > 0) {
+                        processTransferAlerts(data.transferAlerts.details);
+                    } else {
+                        setTimeout(() => { if(banner && !banner.innerHTML.includes('Báo cáo ngày này')) banner.classList.add('hidden'); }, 3000);
+                    }
                 }
             } catch (error) {
                 clearTimeout(loadTimeout);
-                banner.className = 'hidden';
+                if (banner) banner.classList.add('hidden');
             }
+        }
+
+        /** Xử lý thông báo có dữ liệu Nhận/Chuyển từ khoa khác */
+        let _pendingTransferDetails = [];
+        function processTransferAlerts(details) {
+            _pendingTransferDetails = details;
+            const body = document.getElementById('confirmTransferBody');
+            body.innerHTML = '';
+            
+            details.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2 border font-bold text-blue-800">${item.fromKhoa}</td>
+                    <td class="p-2 border text-left">${item.doiTuong}</td>
+                    <td class="p-2 border font-black text-red-600 text-center">${item.soLuong}</td>
+                    <td class="p-2 border text-slate-500 italic text-[10px]">${item.type}</td>
+                `;
+                body.appendChild(tr);
+            });
+            
+            document.getElementById('confirmTransferModal').style.display = 'flex';
+        }
+
+        function closeConfirmTransferModal() {
+            document.getElementById('confirmTransferModal').style.display = 'none';
+        }
+
+        function acceptAllTransfers() {
+            if (!_pendingTransferDetails || _pendingTransferDetails.length === 0) return;
+            
+            _pendingTransferDetails.forEach(item => {
+                // Tìm index của đối tượng trong ROW_NAMES
+                const norm = s => (s || '').replace(/\*/g, '').trim();
+                const targetIdx = ROW_NAMES.findIndex(n => norm(n) === norm(item.doiTuong));
+                
+                if (targetIdx !== -1 && item.soLuong > 0) {
+                    const linkedKhoa = (item.fromKhoa || item.khoa || 'Không xác định').trim().toUpperCase();
+                    if (item.type.includes('Nhận')) {
+                        // Khoa khác chuyển đến -> Khoa này NHẬN
+                        if (!nhanKhoaDataList[targetIdx]) nhanKhoaDataList[targetIdx] = [];
+                        const exists = nhanKhoaDataList[targetIdx].some(ex => (ex.khoa || '').trim().toUpperCase() === linkedKhoa);
+                        if (!exists) {
+                            nhanKhoaDataList[targetIdx].push({ khoa: item.fromKhoa || item.khoa, soLuong: item.soLuong });
+                            
+                            const input = document.querySelector(`.c32.row-${targetIdx}`);
+                            if (input) {
+                                const newTotal = nhanKhoaDataList[targetIdx].reduce((sum, i) => sum + (parseInt(i.soLuong) || 0), 0);
+                                input.value = newTotal;
+                                calc71(targetIdx);
+                            }
+                        }
+                    } else {
+                        // Khoa này chuyển đi
+                        if (!chuyenKhoaDataList[targetIdx]) chuyenKhoaDataList[targetIdx] = [];
+                        const exists = chuyenKhoaDataList[targetIdx].some(ex => (ex.khoa || '').trim().toUpperCase() === linkedKhoa);
+                        if (!exists) {
+                            chuyenKhoaDataList[targetIdx].push({ khoa: item.fromKhoa || item.khoa, soLuong: item.soLuong });
+                            const input = document.querySelector(`.c43.row-${targetIdx}`);
+                            if (input) {
+                                const newTotal = chuyenKhoaDataList[targetIdx].reduce((sum, i) => sum + (parseInt(i.soLuong) || 0), 0);
+                                input.value = newTotal;
+                                calc71(targetIdx);
+                            }
+                        }
+                    }
+                }
+            });
+            
+            calcTotals();
+            closeConfirmTransferModal();
+            alert("✅ Đã cập nhật số liệu từ các khoa liên quan!");
         }
 
         /** Điền dữ liệu cũ vào form thống kê + bệnh nhân */
         function fillFormWithData(data) {
+            if (data.prevC71Map) {
+                window.currentPrevC71Map = data.prevC71Map;
+            } else {
+                window.currentPrevC71Map = null;
+            }
+            
             // Điền bảng thống kê (5 đối tượng)
             const statRows = document.querySelectorAll('#statsTableBody tr');
             if (data.thongKe) {
@@ -1072,7 +1245,7 @@
                     if (targetIdx === undefined) targetIdx = idx;
 
                     if (targetIdx >= statRows.length) return;
-                    
+
                     const row = statRows[targetIdx];
                     if (!row || row.classList.contains('total-row')) return;
 
@@ -1082,12 +1255,29 @@
                         const val = tk[`c${code}`];
                         if(inputs[i]) inputs[i].value = val || 0;
                     });
-                    
+
+                    // Handle chuyenKhoaChiTiet
+                    if (tk.chuyenKhoaChiTiet) {
+                        try {
+                            chuyenKhoaDataList[targetIdx] = JSON.parse(tk.chuyenKhoaChiTiet);
+                        } catch(e) {
+                            chuyenKhoaDataList[targetIdx] = [];
+                        }
+                    }
+
+                    // Handle nhanKhoaChiTiet
+                    if (tk.nhanKhoaChiTiet) {
+                        try {
+                            nhanKhoaDataList[targetIdx] = JSON.parse(tk.nhanKhoaChiTiet);
+                        } catch(e) {
+                            nhanKhoaDataList[targetIdx] = [];
+                        }
+                    }
+
                     // Handle c72 (index 10 in inputs list, after the 10 COL_CODES)
                     if(inputs[COL_CODES.length]) inputs[COL_CODES.length].value = tk.c72 || 0;
                     calc71(targetIdx);
-                });
-            }
+                });            }
 
             // Điền chỉ số chuyên biệt
             if (data.chiSo) {
@@ -1372,7 +1562,7 @@
                             <th rowspan="2" class="sticky-col-2">Khám, cấp cứu</th>
                             <th rowspan="2" class="col-num">BN cũ<br>(1)</th>
                             <th colspan="2">Khám bệnh (2)</th>
-                            <th rowspan="2" class="col-num">Vào<br>viện<br>(3)</th>
+                            <th colspan="1">Vào viện (3)</th>
                             <th colspan="2">Chuyển viện (4)</th>
                             <th colspan="2">Ra viện (5)</th>
                             <th colspan="2">Tử vong (6)</th>
@@ -1381,10 +1571,11 @@
                         <tr>
                             <th class="col-num">Tổng số<br><span class="text-red-600">(2.1)</span></th>
                             <th class="col-num">Khám<br>BHYT<br><span class="text-red-600">(2.2)</span></th>
+                            <th class="col-num">Từ ngoài<br>vào<br><span class="text-red-600">(3.1)</span></th>
                             <th class="col-num">Ngoại<br>trú<br><span class="text-red-600">(4.1)</span></th>
                             <th class="col-num">Nội<br>trú<br><span class="text-red-600">(4.2)</span></th>
                             <th class="col-num">Tổng<br>số<br><span class="text-red-600">(5.1)</span></th>
-                            <th class="col-num">Tiên lượng tử vong<br>xin về<br><span class="text-red-600">(5.2)</span></th>
+                            <th class="col-num">Tiên lượng TV<br>xin về<br><span class="text-red-600">(5.2)</span></th>
                             <th class="col-num">Tử vong<br>nội viện<br><span class="text-red-600">(6.1)</span></th>
                             <th class="col-num">Tử vong<br>ngoại viện<br><span class="text-red-600">(6.2)</span></th>
                             <th class="col-num bg-amber-100">Tổng số<br><span class="text-red-600">(7.1)</span></th>
@@ -1399,7 +1590,7 @@
                     mainTableHtml += `<tr class="${i%2===0?'bg-white':'bg-slate-50'} font-bold">
                         <td class="sticky-col-1 border border-slate-200 ${i%2===0?'bg-white':'bg-slate-50'}">${i}</td>
                         <td class="sticky-col-2 border border-slate-200 text-left p-2 text-blue-800 ${i%2===0?'bg-white':'bg-slate-50'}">${row.doiTuong}</td>
-                        ${row.vals.map((v, idx) => `<td class="border border-slate-200 ${idx>=10?'bg-amber-50 text-amber-900':''}">${v}</td>`).join('')}
+                        ${row.vals.map((v, idx) => `<td class="border border-slate-200 ${idx>=11?'bg-amber-50 text-amber-900':''}">${v}</td>`).join('')}
                     </tr>`;
                 });
                 
@@ -1564,12 +1755,14 @@
                 },
                 thongKe: Array.from(document.querySelectorAll('#statsTableBody tr')).filter(tr => !tr.classList.contains('total-row')).map((tr, i) => {
                     const inputs = tr.querySelectorAll('input');
-                    const rowData = { doiTuong: ROW_NAMES[i] };
+                    const rowData = { doiTuong: ROW_NAMES[i+1] };
                     COL_CODES.forEach((code, idx) => {
                         rowData[`c${code}`] = inputs[idx].value;
                     });
                     rowData.c71 = tr.querySelector('.res-71').innerText;
                     rowData.c72 = inputs[COL_CODES.length].value; // c72 is after all COL_CODES inputs
+                    rowData.chuyenKhoaChiTiet = chuyenKhoaDataList[i+1] ? JSON.stringify(chuyenKhoaDataList[i+1]) : "[]";
+                    rowData.nhanKhoaChiTiet = nhanKhoaDataList[i+1] ? JSON.stringify(nhanKhoaDataList[i+1]) : "[]";
                     return rowData;
                 }),
                 benhNhan: patientDataList.map(bn => ({
@@ -1592,7 +1785,6 @@
                     chuyenTu: bn.chuyenTu,
                     // Chẩn đoán
                     chanDoan: bn.chanDoan, chanDoanChiTiet: bn.chanDoanChiTiet,
-                    icd: bn.icd,
                     icd: bn.icd,
                     fileHSBA: bn.fileHSBA,
                     fileHSBAUrl: bn.fileHSBAUrl // Thêm trường URL file đã upload
@@ -1994,6 +2186,360 @@
         </div>
     </div>
 
+    <!-- MODAL: CHUYỂN KHOA -->
+    <div id="chuyenKhoaModal" class="modal-overlay" style="display:none;">
+        <div class="modal-container" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 id="chuyenKhoaModalTitle"><i class="fas fa-exchange-alt mr-2 text-blue-600"></i>Danh sách chuyển khoa</h3>
+                <button onclick="closeChuyenKhoaModal()" class="text-slate-400 hover:text-red-500 text-xl"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="ckRowIndex" value="-1">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-sm font-bold text-slate-700" id="ckDoiTuongLabel"></span>
+                    <button type="button" onclick="addChuyenKhoaRow()" id="btnThêmChuyenKhoa" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 shadow font-bold"><i class="fas fa-plus mr-1"></i>Thêm khoa chuyển</button>
+                </div>
+                
+                <div class="table-container shadow-sm border rounded-lg">
+                    <table class="w-full text-xs text-center border-collapse">
+                        <thead class="bg-slate-100 font-bold text-slate-600">
+                            <tr>
+                                <th class="p-2 border text-left">Chuyển đến khoa</th>
+                                <th class="p-2 border w-24">Số lượng</th>
+                                <th class="p-2 border w-12 text-center" id="thHanhDongCK">Xóa</th>
+                            </tr>
+                        </thead>
+                        <tbody id="chuyenKhoaListBody" class="divide-y bg-white">
+                            <!-- Rows -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="mt-3 text-right font-bold text-sm text-blue-800">
+                    Tổng cộng: <span id="ckTotal" class="text-red-600 text-lg ml-2">0</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeChuyenKhoaModal()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold text-xs hover:bg-slate-200">Đóng</button>
+                <button id="btnSaveChuyenKhoa" onclick="saveChuyenKhoa()" class="px-5 py-2 bg-blue-700 text-white rounded-lg font-bold text-xs hover:bg-blue-800"><i class="fas fa-check mr-1"></i>Xác nhận</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const KHOA_OPTIONS = [
+            "Nội tổng hợp", "Ngoại tổng hợp", "Phụ Sản", "Nhi", "Liên chuyên khoa", "Hồi sức cấp cứu"
+        ];
+
+        function openChuyenKhoaModal(rowIdx) {
+            document.getElementById('ckRowIndex').value = rowIdx;
+            document.getElementById('ckDoiTuongLabel').innerText = ROW_NAMES[rowIdx];
+            
+            // Xóa disable nếu đang xem (báo cáo tổng)
+            const isReadonly = _isFormLocked || document.getElementById('viewInput').classList.contains('section-hidden');
+            
+            document.getElementById('btnThêmChuyenKhoa').style.display = isReadonly ? 'none' : 'block';
+            document.getElementById('btnSaveChuyenKhoa').style.display = isReadonly ? 'none' : 'block';
+            document.getElementById('thHanhDongCK').style.display = isReadonly ? 'none' : 'table-cell';
+            
+            renderChuyenKhoaList(rowIdx, isReadonly);
+            document.getElementById('chuyenKhoaModal').style.display = 'flex';
+        }
+
+        function closeChuyenKhoaModal() {
+            document.getElementById('chuyenKhoaModal').style.display = 'none';
+        }
+
+        function renderChuyenKhoaList(rowIdx, isReadonly = false) {
+            const body = document.getElementById('chuyenKhoaListBody');
+            body.innerHTML = '';
+            
+            const list = chuyenKhoaDataList[rowIdx] || [];
+            let total = 0;
+            
+            if (list.length === 0 && !isReadonly) {
+                // Thêm 1 dòng trống mặc định nếu chưa có
+                addChuyenKhoaRowRender(body, {khoa: '', soLuong: ''}, isReadonly);
+            } else if (list.length === 0 && isReadonly) {
+                 body.innerHTML = '<tr><td colspan="3" class="p-4 text-slate-400 italic">Không có dữ liệu chuyển khoa</td></tr>';
+            } else {
+                list.forEach(item => {
+                    total += (parseInt(item.soLuong) || 0);
+                    addChuyenKhoaRowRender(body, item, isReadonly);
+                });
+            }
+            
+            document.getElementById('ckTotal').innerText = total;
+        }
+
+        function addChuyenKhoaRowRender(body, item = {khoa: '', soLuong: ''}, isReadonly = false) {
+            const tr = document.createElement('tr');
+            
+            let khoaOptionsHtml = '<option value="">-- Chọn khoa --</option>';
+            KHOA_OPTIONS.forEach(k => {
+                khoaOptionsHtml += `<option value="${k}" ${item.khoa === k ? 'selected' : ''}>${k}</option>`;
+            });
+
+            if (isReadonly) {
+                tr.innerHTML = `
+                    <td class="p-2 border text-left font-bold text-blue-800">${item.khoa || '-'}</td>
+                    <td class="p-2 border font-bold text-red-600 text-base">${item.soLuong || 0}</td>
+                `;
+            } else {
+                tr.innerHTML = `
+                    <td class="p-1 border">
+                        <select class="w-full p-2 border rounded ck-khoa font-bold text-blue-900">
+                            ${khoaOptionsHtml}
+                        </select>
+                    </td>
+                    <td class="p-1 border">
+                        <input type="number" class="w-full p-2 border rounded ck-soluong text-center font-black text-red-700" value="${item.soLuong || ''}" min="0" onchange="updateChuyenKhoaTotal()">
+                    </td>
+                    <td class="p-1 border text-center">
+                        <button type="button" onclick="this.closest('tr').remove(); updateChuyenKhoaTotal();" class="text-red-500 hover:text-red-700 p-2"><i class="fas fa-trash"></i></button>
+                    </td>
+                `;
+            }
+            body.appendChild(tr);
+        }
+
+        function addChuyenKhoaRow() {
+            const body = document.getElementById('chuyenKhoaListBody');
+            addChuyenKhoaRowRender(body, {khoa: '', soLuong: ''}, false);
+        }
+
+        function updateChuyenKhoaTotal() {
+            let total = 0;
+            document.querySelectorAll('#chuyenKhoaListBody tr').forEach(tr => {
+                const slInput = tr.querySelector('.ck-soluong');
+                if (slInput) {
+                    total += (parseInt(slInput.value) || 0);
+                }
+            });
+            document.getElementById('ckTotal').innerText = total;
+        }
+
+        function saveChuyenKhoa() {
+            const rowIdx = document.getElementById('ckRowIndex').value;
+            const rows = document.querySelectorAll('#chuyenKhoaListBody tr');
+            let list = [];
+            let total = 0;
+            
+            rows.forEach(tr => {
+                const khoa = tr.querySelector('.ck-khoa')?.value;
+                const soLuong = parseInt(tr.querySelector('.ck-soluong')?.value) || 0;
+                
+                if (khoa && soLuong > 0) {
+                    list.push({ khoa: khoa, soLuong: soLuong });
+                    total += soLuong;
+                }
+            });
+            
+            chuyenKhoaDataList[rowIdx] = list;
+            
+            // Cập nhật giá trị vào ô input của bảng
+            const inputC43 = document.querySelector(`.c43.row-${rowIdx}`);
+            if (inputC43) {
+                inputC43.value = total;
+                calc71(rowIdx);
+                calcTotals();
+            }
+            
+            closeChuyenKhoaModal();
+        }
+    </script>
+    <!-- MODAL: NHẬN KHOA -->
+    <div id="nhanKhoaModal" class="modal-overlay" style="display:none;">
+        <div class="modal-container" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 id="nhanKhoaModalTitle"><i class="fas fa-hand-holding-medical mr-2 text-blue-600"></i>Danh sách nhận từ khoa</h3>
+                <button onclick="closeNhanKhoaModal()" class="text-slate-400 hover:text-red-500 text-xl"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="nkRowIndex" value="-1">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-sm font-bold text-slate-700" id="nkDoiTuongLabel"></span>
+                    <button type="button" onclick="addNhanKhoaRow()" id="btnThemNhanKhoa" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 shadow font-bold"><i class="fas fa-plus mr-1"></i>Thêm khoa nhận</button>
+                </div>
+                
+                <div class="table-container shadow-sm border rounded-lg">
+                    <table class="w-full text-xs text-center border-collapse">
+                        <thead class="bg-slate-100 font-bold text-slate-600">
+                            <tr>
+                                <th class="p-2 border text-left">Nhận từ khoa</th>
+                                <th class="p-2 border w-24">Số lượng</th>
+                                <th class="p-2 border w-12 text-center" id="thHanhDongNK">Xóa</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nhanKhoaListBody" class="divide-y bg-white">
+                            <!-- Rows -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="mt-3 text-right font-bold text-sm text-blue-800">
+                    Tổng cộng: <span id="nkTotal" class="text-red-600 text-lg ml-2">0</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeNhanKhoaModal()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold text-xs hover:bg-slate-200">Đóng</button>
+                <button id="btnSaveNhanKhoa" onclick="saveNhanKhoa()" class="px-5 py-2 bg-blue-700 text-white rounded-lg font-bold text-xs hover:bg-blue-800"><i class="fas fa-check mr-1"></i>Xác nhận</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openNhanKhoaModal(rowIdx) {
+            document.getElementById('nkRowIndex').value = rowIdx;
+            document.getElementById('nkDoiTuongLabel').innerText = ROW_NAMES[rowIdx];
+            
+            // Xóa disable nếu đang xem (báo cáo tổng)
+            const isReadonly = _isFormLocked || document.getElementById('viewInput').classList.contains('section-hidden');
+            
+            document.getElementById('btnThemNhanKhoa').style.display = isReadonly ? 'none' : 'block';
+            document.getElementById('btnSaveNhanKhoa').style.display = isReadonly ? 'none' : 'block';
+            document.getElementById('thHanhDongNK').style.display = isReadonly ? 'none' : 'table-cell';
+            
+            renderNhanKhoaList(rowIdx, isReadonly);
+            document.getElementById('nhanKhoaModal').style.display = 'flex';
+        }
+
+        function closeNhanKhoaModal() {
+            document.getElementById('nhanKhoaModal').style.display = 'none';
+        }
+
+        function renderNhanKhoaList(rowIdx, isReadonly = false) {
+            const body = document.getElementById('nhanKhoaListBody');
+            body.innerHTML = '';
+            
+            const list = nhanKhoaDataList[rowIdx] || [];
+            let total = 0;
+            
+            if (list.length === 0 && !isReadonly) {
+                // Thêm 1 dòng trống mặc định nếu chưa có
+                addNhanKhoaRowRender(body, {khoa: '', soLuong: ''}, isReadonly);
+            } else if (list.length === 0 && isReadonly) {
+                 body.innerHTML = '<tr><td colspan="3" class="p-4 text-slate-400 italic">Không có dữ liệu nhận khoa</td></tr>';
+            } else {
+                list.forEach(item => {
+                    total += (parseInt(item.soLuong) || 0);
+                    addNhanKhoaRowRender(body, item, isReadonly);
+                });
+            }
+            
+            document.getElementById('nkTotal').innerText = total;
+        }
+
+        function addNhanKhoaRowRender(body, item = {khoa: '', soLuong: ''}, isReadonly = false) {
+            const tr = document.createElement('tr');
+            
+            let khoaOptionsHtml = '<option value="">-- Chọn khoa --</option>';
+            KHOA_OPTIONS.forEach(k => {
+                khoaOptionsHtml += `<option value="${k}" ${item.khoa === k ? 'selected' : ''}>${k}</option>`;
+            });
+
+            if (isReadonly) {
+                tr.innerHTML = `
+                    <td class="p-2 border text-left font-bold text-blue-800">${item.khoa || '-'}</td>
+                    <td class="p-2 border font-bold text-red-600 text-base">${item.soLuong || 0}</td>
+                `;
+            } else {
+                tr.innerHTML = `
+                    <td class="p-1 border">
+                        <select class="w-full p-2 border rounded nk-khoa font-bold text-blue-900">
+                            ${khoaOptionsHtml}
+                        </select>
+                    </td>
+                    <td class="p-1 border">
+                        <input type="number" class="w-full p-2 border rounded nk-soluong text-center font-black text-red-700" value="${item.soLuong || ''}" min="0" onchange="updateNhanKhoaTotal()">
+                    </td>
+                    <td class="p-1 border text-center">
+                        <button type="button" onclick="this.closest('tr').remove(); updateNhanKhoaTotal();" class="text-red-500 hover:text-red-700 p-2"><i class="fas fa-trash"></i></button>
+                    </td>
+                `;
+            }
+            body.appendChild(tr);
+        }
+
+        function addNhanKhoaRow() {
+            const body = document.getElementById('nhanKhoaListBody');
+            addNhanKhoaRowRender(body, {khoa: '', soLuong: ''}, false);
+        }
+
+        function updateNhanKhoaTotal() {
+            let total = 0;
+            document.querySelectorAll('#nhanKhoaListBody tr').forEach(tr => {
+                const slInput = tr.querySelector('.nk-soluong');
+                if (slInput) {
+                    total += (parseInt(slInput.value) || 0);
+                }
+            });
+            document.getElementById('nkTotal').innerText = total;
+        }
+
+        function saveNhanKhoa() {
+            const rowIdx = document.getElementById('nkRowIndex').value;
+            const rows = document.querySelectorAll('#nhanKhoaListBody tr');
+            let list = [];
+            let total = 0;
+            
+            rows.forEach(tr => {
+                const khoa = tr.querySelector('.nk-khoa')?.value;
+                const soLuong = parseInt(tr.querySelector('.nk-soluong')?.value) || 0;
+                
+                if (khoa && soLuong > 0) {
+                    list.push({ khoa: khoa, soLuong: soLuong });
+                    total += soLuong;
+                }
+            });
+            
+            nhanKhoaDataList[rowIdx] = list;
+            
+            // Cập nhật giá trị vào ô input của bảng
+            const inputC32 = document.querySelector(`.c32.row-${rowIdx}`);
+            if (inputC32) {
+                inputC32.value = total;
+                calc71(rowIdx);
+                calcTotals();
+            }
+            
+            closeNhanKhoaModal();
+        }
+    </script>
+
+    <!-- MODAL: XÁC NHẬN NHẬN/CHUYỂN KHOA -->
+    <div id="confirmTransferModal" class="modal-overlay" style="display:none;">
+        <div class="modal-container" style="max-width: 600px;">
+            <div class="modal-header bg-amber-50">
+                <h3 class="text-amber-900"><i class="fas fa-exclamation-triangle mr-2"></i>Phát hiện dữ liệu liên quan</h3>
+                <button onclick="closeConfirmTransferModal()" class="text-slate-400 hover:text-red-500 text-xl"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-sm mb-4">Các khoa sau đây đã báo cáo có liên quan đến khoa của bạn trong ngày hôm nay. Bạn có muốn <b>chấp nhận</b> để tự động điền số liệu không?</p>
+                
+                <div class="table-container shadow-sm border rounded-lg">
+                    <table class="w-full text-xs text-center border-collapse">
+                        <thead class="bg-slate-100 font-bold text-slate-600">
+                            <tr>
+                                <th class="p-2 border text-left">Khoa liên quan</th>
+                                <th class="p-2 border text-left">Đối tượng</th>
+                                <th class="p-2 border w-20">Số lượng</th>
+                                <th class="p-2 border w-24">Loại</th>
+                            </tr>
+                        </thead>
+                        <tbody id="confirmTransferBody" class="divide-y bg-white">
+                            <!-- Dữ liệu được chèn bằng JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-[10px] text-slate-500 mt-3 italic">* Lưu ý: Sau khi chấp nhận, bạn vẫn có thể chỉnh sửa lại nếu cần thiết.</p>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeConfirmTransferModal()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold text-xs hover:bg-slate-200">Để sau</button>
+                <button onclick="acceptAllTransfers()" class="px-5 py-2 bg-amber-600 text-white rounded-lg font-bold text-xs hover:bg-amber-700 shadow-lg"><i class="fas fa-check-double mr-1"></i>Chấp nhận tất cả</button>
+            </div>
+        </div>
+    </div>
     <div class="text-center text-xs text-slate-500 mt-4">Phòng Kế hoạch Tổng hợp - Bệnh viện Bình Định @ 2026</div>
 
 </body>
