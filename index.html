@@ -313,6 +313,15 @@
 
             <!-- VIEW 3: THEO DÕI BÁO CÁO -->
             <div id="viewTracking" class="section-hidden">
+                <div class="bg-purple-50 border border-purple-100 p-4 rounded-xl mb-4 flex flex-col md:flex-row items-center gap-4">
+                    <div class="flex items-center space-x-2">
+                        <label class="font-black text-purple-900 uppercase text-[10px] whitespace-nowrap">Duyệt dữ liệu ngày:</label>
+                        <input type="date" id="adminDuyetDate" onchange="checkDuyetStatus()" class="p-1.5 border rounded-lg font-bold text-purple-800 text-xs">
+                    </div>
+                    <button id="btnDuyet" onclick="handleDuyetNgay(true)" class="bg-purple-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold uppercase hover:bg-purple-800"><i class="fas fa-lock mr-1"></i> Duyệt (Khóa)</button>
+                    <button id="btnHuyDuyet" onclick="handleDuyetNgay(false)" style="display:none;" class="bg-white border-2 border-purple-700 text-purple-700 px-4 py-1.5 rounded-lg text-xs font-bold uppercase hover:bg-purple-50"><i class="fas fa-unlock mr-1"></i> Hủy duyệt</button>
+                    <span id="duyetStatusMsg" class="text-xs font-bold ml-2"></span>
+                </div>
                 <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-xl mb-6 flex flex-col md:flex-row items-center gap-4">
                     <div class="flex items-center space-x-2">
                         <label class="font-black text-emerald-900 uppercase text-[10px] whitespace-nowrap">Từ ngày:</label>
@@ -369,6 +378,7 @@
                 const dateVal = document.getElementById('ngayTruc').value;
                 document.getElementById('trackingStart').value = dateVal;
                 document.getElementById('trackingEnd').value = dateVal;
+                document.getElementById('adminDuyetDate').value = dateVal;
                 fetchTrackingStatus();
             }
         }
@@ -417,6 +427,8 @@
             updateInputState(khoa);
         }
 
+        let _isFormLocked = false;
+
         function updateInputState(khoa) {
             khoa = (khoa || '').toUpperCase();
             // Helper để lấy index của cột trong bảng dựa vào mã cột (c1, c21...)
@@ -428,11 +440,17 @@
                 if (tr.classList.contains('total-row')) return; // Bỏ qua dòng tổng
                 const inputs = tr.querySelectorAll('input');                
                 
-                // Mặc định enable hết
+                // Mặc định enable/disable dựa vào _isFormLocked
                 inputs.forEach(inp => {
-                    inp.disabled = false;
-                    inp.classList.remove('bg-gray-100', 'text-gray-400');
+                    inp.disabled = _isFormLocked;
+                    if (_isFormLocked) {
+                        inp.classList.add('bg-gray-100', 'text-gray-400');
+                    } else {
+                        inp.classList.remove('bg-gray-100', 'text-gray-400');
+                    }
                 });
+
+                if (_isFormLocked) return; // Nếu form khóa thì bỏ qua logic disable theo khoa
 
                 // Cột 7.2 (Hiện có) là cột cuối cùng trong inputs (index = length của COL_CODES)
                 const idx72 = COL_CODES.length;
@@ -947,6 +965,39 @@
             loadExistingReport(khoa, ngay);
         }
 
+        function lockForm(isLocked) {
+            _isFormLocked = isLocked;
+            const btn = document.getElementById('submitBtn');
+            if (isLocked) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-lock mr-2"></i>ĐÃ DUYỆT - KHÔNG THỂ GỬI';
+                btn.classList.replace('bg-blue-700', 'bg-slate-400');
+                btn.classList.replace('hover:bg-blue-800', 'hover:bg-slate-400');
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = 'GỬI BÁO CÁO TRỰC <i class="fas fa-paper-plane ml-2"></i>';
+                btn.classList.replace('bg-slate-400', 'bg-blue-700');
+                btn.classList.replace('hover:bg-slate-400', 'hover:bg-blue-800');
+            }
+            
+            ['phauThuat', 'phauThuatCC', 'mauDuTru', 'treSinh', 'treSinhMo', 'sdtNguoiBaoCao'].forEach(id => {
+                const el = document.getElementById(id);
+                if(el) {
+                    el.disabled = isLocked;
+                    if (isLocked) {
+                        el.classList.add('bg-gray-100', 'text-gray-400');
+                    } else {
+                        el.classList.remove('bg-gray-100', 'text-gray-400');
+                    }
+                }
+            });
+
+            const actionBtns = document.querySelectorAll('button[onclick*="openPatientModal"], button[onclick*="removePatient"]');
+            actionBtns.forEach(b => b.style.display = isLocked ? 'none' : '');
+            
+            updateInputState(document.getElementById('khoaBaoCao').value);
+        }
+
         /** Gọi backend để lấy dữ liệu đã gửi trước đó */
         async function loadExistingReport(khoa, ngay) {
             const banner = document.getElementById('loadStatusBanner');
@@ -964,6 +1015,22 @@
             try {
                 const data = await callBackend('getExistingReport', { khoa: khoa, ngay: ngay });
                 clearTimeout(loadTimeout);
+                
+                // --- Xử lý KHÓA Form nếu đã duyệt ---
+                if (data && data.isApproved) {
+                    if (data.found || data.failButFoundPrev) {
+                        fillFormWithData(data);
+                    } else {
+                        resetForm();
+                    }
+                    lockForm(true);
+                    banner.className = 'mb-4 p-3 rounded-xl text-sm font-bold text-center bg-red-100 border border-red-300 text-red-800';
+                    banner.innerHTML = '🔒 Báo cáo ngày này đã được Phòng KHTH duyệt. Bạn không thể chỉnh sửa hay thêm mới!';
+                    return;
+                } else {
+                    lockForm(false);
+                }
+
                 if (data && (data.found || data.failButFoundPrev)) {
                     fillFormWithData(data);
                     if (data.found) {
@@ -1119,6 +1186,72 @@
         // TAB THEO DÕI: Ma trận khoa × ngày
         // ==============================================================
 
+        async function handleDuyetNgay(isApproved) {
+            const ngay = document.getElementById('adminDuyetDate').value;
+            if (!ngay) {
+                alert("Vui lòng chọn ngày cần duyệt/hủy duyệt!");
+                return;
+            }
+            const pass = prompt("Nhập mật khẩu KHTH để thực hiện:");
+            if (pass !== "cotec@123") {
+                if (pass !== null) alert("Mật khẩu không đúng!");
+                return;
+            }
+            
+            const msgEl = document.getElementById('duyetStatusMsg');
+            msgEl.innerHTML = '<i class="fas fa-spinner fa-spin text-purple-600"></i>';
+            try {
+                const res = await callBackend('toggleApproval', { ngay: ngay, isApproved: isApproved });
+                if (res && res.success) {
+                    msgEl.innerHTML = isApproved ? '<span class="text-green-600">✅ Đã khóa ngày ' + ngay + '</span>' : '<span class="text-blue-600">✅ Đã mở khóa ngày ' + ngay + '</span>';
+                    
+                    if (isApproved) {
+                        document.getElementById('btnDuyet').style.display = 'none';
+                        document.getElementById('btnHuyDuyet').style.display = 'inline-block';
+                    } else {
+                        document.getElementById('btnDuyet').style.display = 'inline-block';
+                        document.getElementById('btnHuyDuyet').style.display = 'none';
+                    }
+
+                    fetchTrackingStatus();
+                    const currentNgayTruc = document.getElementById('ngayTruc').value;
+                    const currentKhoa = document.getElementById('khoaBaoCao').value;
+                    if (currentNgayTruc === ngay && currentKhoa) {
+                        loadExistingReport(currentKhoa, currentNgayTruc);
+                    }
+                } else {
+                    msgEl.innerHTML = '<span class="text-red-600">❌ Lỗi: ' + (res.error || 'Không xác định') + '</span>';
+                }
+            } catch(e) {
+                msgEl.innerHTML = '<span class="text-red-600">❌ Lỗi: ' + e.message + '</span>';
+            }
+        }
+
+        async function checkDuyetStatus() {
+            const ngay = document.getElementById('adminDuyetDate').value;
+            if (!ngay) return;
+            const btnDuyet = document.getElementById('btnDuyet');
+            const btnHuyDuyet = document.getElementById('btnHuyDuyet');
+            const msgEl = document.getElementById('duyetStatusMsg');
+            msgEl.innerHTML = '<i class="fas fa-spinner fa-spin text-purple-600"></i>';
+            try {
+                const data = await callBackend('getReportStatus', { startDate: ngay, endDate: ngay });
+                msgEl.innerHTML = '';
+                if (data && data.approvalMap) {
+                    const isApproved = data.approvalMap[ngay];
+                    if (isApproved) {
+                        btnDuyet.style.display = 'none';
+                        btnHuyDuyet.style.display = 'inline-block';
+                    } else {
+                        btnDuyet.style.display = 'inline-block';
+                        btnHuyDuyet.style.display = 'none';
+                    }
+                }
+            } catch(e) {
+                msgEl.innerHTML = '';
+            }
+        }
+
         /** Lấy trạng thái báo cáo và hiển thị bảng ma trận */
         async function fetchTrackingStatus() {
             const start = document.getElementById('trackingStart').value;
@@ -1133,6 +1266,22 @@
                     container.innerHTML = '<div class="text-center py-10 text-red-500">Lỗi: ' + (data?.error || 'Không xác định') + '</div>';
                     return;
                 }
+                
+                // --- Cập nhật nút Duyệt theo dữ liệu trả về để tiết kiệm 1 lần fetch ---
+                const ngayDuyet = document.getElementById('adminDuyetDate').value;
+                if (data.approvalMap && ngayDuyet) {
+                    const btnDuyet = document.getElementById('btnDuyet');
+                    const btnHuyDuyet = document.getElementById('btnHuyDuyet');
+                    const isApproved = data.approvalMap[ngayDuyet];
+                    if (isApproved) {
+                        btnDuyet.style.display = 'none';
+                        btnHuyDuyet.style.display = 'inline-block';
+                    } else {
+                        btnDuyet.style.display = 'inline-block';
+                        btnHuyDuyet.style.display = 'none';
+                    }
+                }
+
                 if (!data.dates || data.dates.length === 0) {
                     container.innerHTML = '<div class="text-center py-10 text-slate-400 italic">Không có ngày nào trong khoảng này.</div>';
                     return;

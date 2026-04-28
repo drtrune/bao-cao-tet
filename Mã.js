@@ -75,12 +75,83 @@ function deactivateExistingReport(khoa, ngay) {
   return nextVersion;
 }
 
+// ======================================================================
+// PHẦN QUẢN LÝ DUYỆT BÁO CÁO
+// ======================================================================
+
+function checkApprovalStatus(ngay) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName("Data_DuyetNgay");
+    if (!sheet) return false;
+    
+    let data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      let rowDate = '';
+      if (data[i][0]) {
+         try {
+           rowDate = Utilities.formatDate(new Date(data[i][0]), "GMT+7", "yyyy-MM-dd");
+         } catch(e) { rowDate = String(data[i][0]); }
+      }
+      if (rowDate === ngay && data[i][1] === "Đã duyệt") {
+        return true;
+      }
+    }
+    return false;
+  } catch(e) {
+    return false;
+  }
+}
+
+function toggleApproval(ngay, isApproved) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName("Data_DuyetNgay");
+    if (!sheet) {
+      sheet = ss.insertSheet("Data_DuyetNgay");
+      sheet.appendRow(["Ngày", "Trạng thái", "Thời gian cập nhật"]);
+    }
+    
+    let data = sheet.getDataRange().getValues();
+    let foundIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      let rowDate = '';
+      if (data[i][0]) {
+         try {
+           rowDate = Utilities.formatDate(new Date(data[i][0]), "GMT+7", "yyyy-MM-dd");
+         } catch(e) { rowDate = String(data[i][0]); }
+      }
+      if (rowDate === ngay) {
+        foundIndex = i + 1;
+        break;
+      }
+    }
+    
+    let statusText = isApproved ? "Đã duyệt" : "Chưa duyệt";
+    if (foundIndex > -1) {
+      sheet.getRange(foundIndex, 2).setValue(statusText);
+      sheet.getRange(foundIndex, 3).setValue(new Date());
+    } else {
+      sheet.appendRow([ngay, statusText, new Date()]);
+    }
+    
+    return { success: true, status: isApproved };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
 /**
  * Hàm lưu báo cáo — cơ chế UPSERT (xoá cũ rồi ghi mới)
  * Đảm bảo mỗi (khoa, ngày) chỉ có 1 bộ dữ liệu duy nhất
  */
 function saveReport(payload) {
   try {
+    // Kiểm tra duyệt
+    if (checkApprovalStatus(payload.ngay)) {
+      throw new Error("Dữ liệu ngày " + payload.ngay + " đã được KHTH duyệt. Không thể thêm/sửa báo cáo!");
+    }
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheetTK =
       ss.getSheetByName("Data_ThongKe") || ss.insertSheet("Data_ThongKe");
@@ -244,7 +315,7 @@ function uploadSingleFile(fileData) {
 function getExistingReport(khoa, ngay) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let result = { found: false, thongKe: [], benhNhan: [], chiSo: {} };
+    let result = { found: false, thongKe: [], benhNhan: [], chiSo: {}, isApproved: checkApprovalStatus(ngay) };
 
     // Đọc Data_ThongKe
     const sheetTK = ss.getSheetByName("Data_ThongKe");
@@ -670,7 +741,24 @@ function getReportStatus(startDate, endDate) {
       return { khoa: khoa, reported: reported };
     });
 
-    return { dates: dates, departments: departments };
+    // Lấy trạng thái duyệt
+    let approvalMap = {};
+    const sheetDuyet = ss.getSheetByName("Data_DuyetNgay");
+    if (sheetDuyet && sheetDuyet.getLastRow() > 1) {
+      const dataDuyet = sheetDuyet.getDataRange().getValues();
+      for (let i = 1; i < dataDuyet.length; i++) {
+        let rowDate = '';
+        if (dataDuyet[i][0]) {
+           try { rowDate = Utilities.formatDate(new Date(dataDuyet[i][0]), "GMT+7", "yyyy-MM-dd"); } 
+           catch(e) { rowDate = String(dataDuyet[i][0]); }
+        }
+        if (rowDate >= startDate && rowDate <= endDate) {
+          approvalMap[rowDate] = (dataDuyet[i][1] === "Đã duyệt");
+        }
+      }
+    }
+
+    return { dates: dates, departments: departments, approvalMap: approvalMap };
   } catch (e) {
     return { error: e.toString() };
   }
@@ -863,6 +951,9 @@ function doPost(e) {
           break;
         case 'getReportStatus':
           result = getReportStatus(payload.startDate, payload.endDate);
+          break;
+        case 'toggleApproval':
+          result = toggleApproval(payload.ngay, payload.isApproved);
           break;
         default:
           throw new Error('Action không hợp lệ: ' + action);
