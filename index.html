@@ -574,7 +574,7 @@
             });
         }
 
-        /** Tính cột 7.1 cho 1 dòng: BN cũ + Vào viện - Chuyển - Ra viện - TV */
+        /** Tính cột 7.1 cho 1 dòng: BN cũ + Vào viện - Chuyển - Ra viện - TV nội viện */
         function calc71(r) {
             if (r === 0) return; // Không tính cho dòng tổng KHÁM CHỮA BỆNH CHUNG theo công thức này, mà nó sẽ tự lấy tổng từ các dòng dưới
             const c1 = parseFloat(document.querySelector(`.c1.row-${r}`).value) || 0;
@@ -585,7 +585,7 @@
             const c51 = parseFloat(document.querySelector(`.c51.row-${r}`).value) || 0;
             const c61 = parseFloat(document.querySelector(`.c61.row-${r}`).value) || 0;
             const c62 = parseFloat(document.querySelector(`.c62.row-${r}`).value) || 0;
-            document.querySelectorAll('.res-71')[r].innerText = c1 + c3 + c32 - c42 - c43 - c51 - c61 - c62;
+            document.querySelectorAll('.res-71')[r].innerText = c1 + c3 + c32 - c42 - c43 - c51 - c61;
         }
 
         /** Tính hàng KHÁM CHỮA BỆNH CHUNG (Dòng 0) */
